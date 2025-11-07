@@ -437,10 +437,14 @@ function Organize-WindowsOutput {
     New-Item -ItemType Directory -Force -Path "$OutputDir\include" | Out-Null
 
     $InstallPath = Join-Path $InstallDir "windows-$Arch"
+    Write-Host "Install path: $InstallPath" -ForegroundColor Cyan
 
     # Copy DLLs and executables
     $BinPath = Join-Path $InstallPath "bin"
     if (Test-Path $BinPath) {
+        $DllCount = (Get-ChildItem -Path $BinPath -Filter "*.dll" -ErrorAction SilentlyContinue | Measure-Object).Count
+        $ExeCount = (Get-ChildItem -Path $BinPath -Filter "*.exe" -ErrorAction SilentlyContinue | Measure-Object).Count
+        Write-Host "Copying $DllCount DLL(s) and $ExeCount EXE(s) from bin/" -ForegroundColor Cyan
         Get-ChildItem -Path $BinPath -Filter "*.dll" -ErrorAction SilentlyContinue |
             Copy-Item -Destination "$OutputDir\bin" -Force
         Get-ChildItem -Path $BinPath -Filter "*.exe" -ErrorAction SilentlyContinue |
@@ -449,9 +453,17 @@ function Organize-WindowsOutput {
 
     # Copy import libraries
     $LibPath = Join-Path $InstallPath "lib"
+    Write-Host "Checking lib path: $LibPath" -ForegroundColor Cyan
     if (Test-Path $LibPath) {
-        Get-ChildItem -Path $LibPath -Filter "*.lib" -ErrorAction SilentlyContinue |
-            Copy-Item -Destination "$OutputDir\lib" -Force
+        $LibFiles = Get-ChildItem -Path $LibPath -Filter "*.lib" -ErrorAction SilentlyContinue
+        $LibCount = ($LibFiles | Measure-Object).Count
+        Write-Host "Copying $LibCount .lib file(s) from lib/" -ForegroundColor Cyan
+        $LibFiles | ForEach-Object {
+            Write-Host "  - $($_.Name)" -ForegroundColor Green
+            Copy-Item $_.FullName -Destination "$OutputDir\lib" -Force
+        }
+    } else {
+        Write-Host "WARNING: Lib path does not exist!" -ForegroundColor Yellow
     }
 
     # Copy headers
@@ -579,5 +591,17 @@ Write-Host "  - lib\"
 Write-Host "  - include\"
 Write-Host "  - README.txt"
 Write-Host ""
+
+# Debug: List actual files in output directory
+Write-Host "=== Verifying output directory contents ===" -ForegroundColor Cyan
+if (Test-Path "$OutputDir\lib") {
+    $LibFiles = Get-ChildItem -Path "$OutputDir\lib" -Filter "*.lib" -ErrorAction SilentlyContinue
+    Write-Host "Found $($LibFiles.Count) .lib files in output:" -ForegroundColor Green
+    $LibFiles | ForEach-Object { Write-Host "  - $($_.Name)" -ForegroundColor Green }
+} else {
+    Write-Host "WARNING: lib directory does not exist in output!" -ForegroundColor Red
+}
+Write-Host ""
+
 Write-Host "Note: GitHub Actions will create the zip archive from these files"
 Write-Host ""
