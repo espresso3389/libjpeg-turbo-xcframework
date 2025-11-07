@@ -1,23 +1,122 @@
-# Building libjpeg-turbo XCFramework for iOS/macOS
+# libjpeg-turbo XCFramework Builder
 
-This workflow builds libjpeg-turbo as a universal XCFramework supporting:
-- iOS (arm64)
-- iOS Simulator (arm64 + x86_64)
-- macOS (arm64 + x86_64)
+This project builds universal XCFrameworks for libjpeg-turbo that support iOS and macOS platforms.
 
-## Setup
+## Features
 
-1. Create a new GitHub repository or use an existing one
-2. Copy the `build-libjpeg-turbo-xcframework.yml` file to `.github/workflows/` in your repository
-3. Commit and push
+- Supports iOS (device and simulator) and macOS (Apple Silicon and Intel)
+- Builds both `libjpeg` and `libturbojpeg` libraries
+- Creates universal binaries for maximum compatibility
+- Can be built locally or via GitHub Actions
 
-## Usage
+## Prerequisites
 
-### Automatic Trigger
-The workflow will run automatically on push to the main branch and will build the latest version of libjpeg-turbo.
+To build locally, you need:
+
+- macOS with Xcode Command Line Tools installed
+- CMake: `brew install cmake`
+- NASM: `brew install nasm`
+- jq (for version detection): `brew install jq`
+
+## Building Locally
+
+### Quick Start
+
+Build the latest version:
+
+```bash
+./build.sh
+```
+
+Build a specific version:
+
+```bash
+./build.sh 3.0.4
+```
+
+or with the version tag:
+
+```bash
+./build.sh v3.0.4
+```
+
+### Output
+
+After a successful build, you'll find:
+
+- `libjpeg.xcframework` - Standard libjpeg library
+- `libturbojpeg.xcframework` - TurboJPEG API library
+- `libjpeg-turbo-{version}-xcframework.zip` - Archive of both frameworks
+- `checksums.txt` - SHA256 checksums for verification
+
+## Project Structure
+
+```
+.
+├── build.sh                          # Main build orchestration script
+├── scripts/
+│   ├── common.sh                     # Shared utilities and variables
+│   ├── fetch-source.sh               # Download libjpeg-turbo source
+│   ├── build-platforms.sh            # Build for each platform/arch
+│   ├── create-universal.sh           # Create universal binaries with lipo
+│   ├── create-xcframework.sh         # Generate XCFrameworks
+│   └── create-checksums.sh           # Generate SHA256 checksums
+└── .github/workflows/
+    └── build-libjpeg-turbo-xcframework.yml  # CI/CD workflow
+```
+
+## Build Process
+
+The build script performs the following steps:
+
+1. **Fetch Source**: Downloads the specified version of libjpeg-turbo from GitHub
+2. **Build Platforms**: Compiles static libraries for each platform and architecture:
+   - iOS arm64 (device)
+   - iOS Simulator arm64
+   - iOS Simulator x86_64
+   - macOS arm64 (Apple Silicon)
+   - macOS x86_64 (Intel)
+3. **Create Universal Binaries**: Uses `lipo` to combine architectures:
+   - iOS Simulator: arm64 + x86_64
+   - macOS: arm64 + x86_64
+4. **Create XCFrameworks**: Packages frameworks for iOS and macOS
+5. **Create Archive**: Zips the XCFrameworks
+6. **Generate Checksums**: Creates SHA256 checksums for verification
+
+## Debugging
+
+Since all build logic is now in shell scripts, you can:
+
+1. Run individual scripts to test specific steps
+2. Add debug output by modifying the scripts
+3. Inspect intermediate build artifacts in `build/` and `install/` directories
+4. Run the entire build locally before pushing to CI
+
+Example: Test only the build step:
+
+```bash
+# Source the common utilities
+source scripts/common.sh
+
+# Download source
+source scripts/fetch-source.sh
+fetch_libjpeg_turbo_source "latest"
+
+# Build just one platform
+source scripts/build-platforms.sh
+build_platform "macos" "arm64" "11.0" "" ""
+```
+
+## GitHub Actions
+
+### Triggers
+
+The workflow is triggered:
+
+- Manually via workflow dispatch (can specify version)
+- Automatically on push to `main` branch
 
 ### Manual Trigger
-You can manually trigger the workflow:
 
 1. Go to your repository on GitHub
 2. Click on "Actions" tab

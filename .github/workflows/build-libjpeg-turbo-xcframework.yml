@@ -21,183 +21,26 @@ jobs:
     - name: Install dependencies
       run: |
         brew install cmake nasm jq
-    
-    - name: Determine version to build
-      id: version
+
+    - name: Make build script executable
+      run: chmod +x build.sh
+
+    - name: Build XCFrameworks
+      id: build
       run: |
         INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
-        
+        ./build.sh "$INPUT_VERSION"
+
+        # Export version for later steps
+        source scripts/common.sh
+        source scripts/fetch-source.sh
         if [ "$INPUT_VERSION" = "latest" ]; then
-          echo "Fetching latest release version..."
           LATEST_VERSION=$(curl -s https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest | jq -r .tag_name)
-          echo "Latest version: $LATEST_VERSION"
-          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          VERSION="$LATEST_VERSION"
         else
-          echo "Using specified version: $INPUT_VERSION"
-          echo "version=$INPUT_VERSION" >> $GITHUB_OUTPUT
+          VERSION="$INPUT_VERSION"
         fi
-    
-    - name: Download libjpeg-turbo source
-      run: |
-        VERSION=${{ steps.version.outputs.version }}
-        echo "Downloading libjpeg-turbo version: $VERSION"
-        curl -L "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/${VERSION}.tar.gz" -o libjpeg-turbo.tar.gz
-        tar -xzf libjpeg-turbo.tar.gz
-        
-        # Remove version prefix if present (e.g., "3.0.4" or "v3.0.4")
-        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
-        mv libjpeg-turbo-${VERSION_CLEAN} libjpeg-turbo-source
-    
-    - name: Build for iOS arm64
-      run: |
-        mkdir -p build-ios-arm64
-        cd build-ios-arm64
-        cmake ../libjpeg-turbo-source \
-          -DCMAKE_SYSTEM_NAME=iOS \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-          -DCMAKE_INSTALL_PREFIX=../install-ios-arm64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON \
-          -DCMAKE_C_FLAGS="-fembed-bitcode"
-        make -j$(sysctl -n hw.ncpu)
-        make install
-    
-    - name: Build for iOS Simulator arm64
-      run: |
-        mkdir -p build-ios-simulator-arm64
-        cd build-ios-simulator-arm64
-        cmake ../libjpeg-turbo-source \
-          -DCMAKE_SYSTEM_NAME=iOS \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-          -DCMAKE_OSX_SYSROOT=iphonesimulator \
-          -DCMAKE_INSTALL_PREFIX=../install-ios-simulator-arm64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON
-        make -j$(sysctl -n hw.ncpu)
-        make install
-    
-    - name: Build for iOS Simulator x86_64
-      run: |
-        mkdir -p build-ios-simulator-x86_64
-        cd build-ios-simulator-x86_64
-        cmake ../libjpeg-turbo-source \
-          -DCMAKE_SYSTEM_NAME=iOS \
-          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-          -DCMAKE_OSX_SYSROOT=iphonesimulator \
-          -DCMAKE_INSTALL_PREFIX=../install-ios-simulator-x86_64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON
-        make -j$(sysctl -n hw.ncpu)
-        make install
-    
-    - name: Build for macOS arm64
-      run: |
-        mkdir -p build-macos-arm64
-        cd build-macos-arm64
-        cmake ../libjpeg-turbo-source \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
-          -DCMAKE_INSTALL_PREFIX=../install-macos-arm64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON
-        make -j$(sysctl -n hw.ncpu)
-        make install
-    
-    - name: Build for macOS x86_64
-      run: |
-        mkdir -p build-macos-x86_64
-        cd build-macos-x86_64
-        cmake ../libjpeg-turbo-source \
-          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
-          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
-          -DCMAKE_INSTALL_PREFIX=../install-macos-x86_64 \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DENABLE_SHARED=OFF \
-          -DENABLE_STATIC=ON
-        make -j$(sysctl -n hw.ncpu)
-        make install
-    
-    - name: Create universal binary for iOS Simulator
-      run: |
-        mkdir -p install-ios-simulator/lib
-        lipo -create \
-          install-ios-simulator-arm64/lib/libjpeg.a \
-          install-ios-simulator-x86_64/lib/libjpeg.a \
-          -output install-ios-simulator/lib/libjpeg.a
-        
-        lipo -create \
-          install-ios-simulator-arm64/lib/libturbojpeg.a \
-          install-ios-simulator-x86_64/lib/libturbojpeg.a \
-          -output install-ios-simulator/lib/libturbojpeg.a
-        
-        cp -R install-ios-simulator-arm64/include install-ios-simulator/
-    
-    - name: Create universal binary for macOS
-      run: |
-        mkdir -p install-macos/lib
-        lipo -create \
-          install-macos-arm64/lib/libjpeg.a \
-          install-macos-x86_64/lib/libjpeg.a \
-          -output install-macos/lib/libjpeg.a
-        
-        lipo -create \
-          install-macos-arm64/lib/libturbojpeg.a \
-          install-macos-x86_64/lib/libturbojpeg.a \
-          -output install-macos/lib/libturbojpeg.a
-        
-        cp -R install-macos-arm64/include install-macos/
-    
-    - name: Create XCFramework
-      run: |
-        # Create framework structure for iOS (device + simulator in one)
-        mkdir -p frameworks/ios/libjpeg.framework/Headers
-        # Use lipo to combine device and simulator into one library
-        lipo -create \
-          install-ios-arm64/lib/libjpeg.a \
-          install-ios-simulator/lib/libjpeg.a \
-          -output frameworks/ios/libjpeg.framework/libjpeg
-        cp install-ios-arm64/include/*.h frameworks/ios/libjpeg.framework/Headers/
-        
-        # Create framework structure for macOS
-        mkdir -p frameworks/macos/libjpeg.framework/Headers
-        cp install-macos/lib/libjpeg.a frameworks/macos/libjpeg.framework/libjpeg
-        cp install-macos/include/*.h frameworks/macos/libjpeg.framework/Headers/
-        
-        # Create XCFramework with iOS (device+simulator) and macOS
-        xcodebuild -create-xcframework \
-          -framework frameworks/ios/libjpeg.framework \
-          -framework frameworks/macos/libjpeg.framework \
-          -output libjpeg.xcframework
-        
-        # Create TurboJPEG XCFramework the same way
-        mkdir -p frameworks-turbo/ios/libturbojpeg.framework/Headers
-        lipo -create \
-          install-ios-arm64/lib/libturbojpeg.a \
-          install-ios-simulator/lib/libturbojpeg.a \
-          -output frameworks-turbo/ios/libturbojpeg.framework/libturbojpeg
-        cp install-ios-arm64/include/turbojpeg.h frameworks-turbo/ios/libturbojpeg.framework/Headers/
-        
-        mkdir -p frameworks-turbo/macos/libturbojpeg.framework/Headers
-        cp install-macos/lib/libturbojpeg.a frameworks-turbo/macos/libturbojpeg.framework/libturbojpeg
-        cp install-macos/include/turbojpeg.h frameworks-turbo/macos/libturbojpeg.framework/Headers/
-        
-        xcodebuild -create-xcframework \
-          -framework frameworks-turbo/ios/libturbojpeg.framework \
-          -framework frameworks-turbo/macos/libturbojpeg.framework \
-          -output libturbojpeg.xcframework
-    
-    - name: Create archive
-      run: |
-        VERSION=${{ steps.version.outputs.version }}
-        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
-        zip -r libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip libjpeg.xcframework libturbojpeg.xcframework
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -209,61 +52,51 @@ jobs:
           libjpeg-turbo-*-xcframework.zip
         retention-days: 30
     
-    - name: Generate checksums
-      run: |
-        VERSION=${{ steps.version.outputs.version }}
-        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
-        
-        # Generate SHA256 checksums
-        shasum -a 256 libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip > checksums.txt
-        
-        # Display checksums
-        cat checksums.txt
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.version.outputs.version }}
-        name: libjpeg-turbo ${{ steps.version.outputs.version }} XCFramework
+        tag_name: ${{ steps.build.outputs.version }}
+        name: libjpeg-turbo ${{ steps.build.outputs.version }} XCFramework
         body: |
-          # libjpeg-turbo ${{ steps.version.outputs.version }} - Universal XCFramework
-          
+          # libjpeg-turbo ${{ steps.build.outputs.version }} - Universal XCFramework
+
           Pre-built universal XCFramework for iOS and macOS.
-          
+
           ## 📦 What's Included
-          
+
           - **libjpeg.xcframework** - Standard libjpeg library
           - **libturbojpeg.xcframework** - TurboJPEG API library
-          
+
           ## 🎯 Supported Platforms
-          
+
           - **iOS**: arm64 (device) + arm64/x86_64 (simulator)
           - **macOS**: arm64 (Apple Silicon) + x86_64 (Intel)
-          
+
           ## 📥 Installation
-          
+
           ### Swift Package Manager
           Add to your `Package.swift`:
           ```swift
-          .package(url: "https://github.com/${{ github.repository }}", from: "${{ steps.version.outputs.version }}")
+          .package(url: "https://github.com/${{ github.repository }}", from: "${{ steps.build.outputs.version }}")
           ```
-          
+
           ### Manual Installation
           1. Download `libjpeg-turbo-xcframework.zip`
           2. Extract and drag the `.xcframework` files into your Xcode project
           3. Ensure "Do Not Embed" is selected (static libraries)
-          
+
           ## 🔐 Checksums
-          
+
           See `checksums.txt` for SHA256 verification.
-          
+
           ## 📖 Documentation
-          
+
           - [libjpeg-turbo Official Docs](https://libjpeg-turbo.org/)
-          - [Original Release Notes](https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/${{ steps.version.outputs.version }})
-          
+          - [Original Release Notes](https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/${{ steps.build.outputs.version }})
+
           ---
-          
+
           Built with ❤️ using GitHub Actions
           Triggered by: ${{ github.event_name }}
         files: |
