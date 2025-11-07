@@ -65,7 +65,7 @@ jobs:
         brew install cmake nasm jq
 
     - name: Make build script executable
-      run: chmod +x build.sh
+      run: chmod +x build-darwin.sh
 
     - name: Build XCFrameworks
       id: build
@@ -73,7 +73,7 @@ jobs:
         INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
 
         # Build command with options
-        BUILD_CMD="./build.sh"
+        BUILD_CMD="./build-darwin.sh"
 
         # Add build options based on inputs
         if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then

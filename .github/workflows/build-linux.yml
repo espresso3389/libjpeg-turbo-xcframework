@@ -1,0 +1,206 @@
+name: Build libjpeg-turbo Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'libjpeg-turbo version (use "latest" for most recent release)'
+        required: true
+        default: 'latest'
+      jpeg8:
+        description: 'Build with libjpeg v8 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      jpeg7:
+        description: 'Build with libjpeg v7 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      enable_simd:
+        description: 'Enable SIMD optimizations'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_enc:
+        description: 'Enable arithmetic encoding'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_dec:
+        description: 'Enable arithmetic decoding'
+        required: false
+        type: boolean
+        default: true
+      enable_turbojpeg:
+        description: 'Enable TurboJPEG API library'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          nasm \
+          gcc \
+          g++ \
+          gcc-multilib \
+          g++-multilib \
+          gcc-arm-linux-gnueabihf \
+          g++-arm-linux-gnueabihf \
+          gcc-aarch64-linux-gnu \
+          g++-aarch64-linux-gnu \
+          jq
+
+    - name: Make build script executable
+      run: chmod +x build-linux.sh
+
+    - name: Build Linux binaries
+      run: |
+        INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
+
+        # Build command with options
+        BUILD_CMD="./build-linux.sh"
+
+        # Add build options based on inputs
+        if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg8"
+        fi
+
+        if [ "${{ github.event.inputs.jpeg7 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg7"
+        fi
+
+        if [ "${{ github.event.inputs.enable_simd }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-simd"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_enc }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-enc"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_dec }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-dec"
+        fi
+
+        if [ "${{ github.event.inputs.enable_turbojpeg }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-turbojpeg"
+        fi
+
+        # Add version
+        BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
+
+        echo "Build command: $BUILD_CMD"
+        eval $BUILD_CMD
+
+        # Export version for later steps
+        source scripts/common.sh
+        source scripts/fetch-source.sh
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest | jq -r .tag_name)
+          VERSION="$LATEST_VERSION"
+        else
+          VERSION="$INPUT_VERSION"
+        fi
+        # Clean version string
+        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
+        echo "VERSION_CLEAN=$VERSION_CLEAN" >> $GITHUB_ENV
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-linux
+        path: |
+          build/output/libjpeg-turbo-*-linux.tar.gz
+          build/output/libjpeg-turbo-*-linux/
+          build/output/checksums.txt
+        retention-days: 30
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.VERSION_CLEAN }}-linux
+        name: libjpeg-turbo ${{ env.VERSION_CLEAN }} - Linux
+        body: |
+          # libjpeg-turbo ${{ env.VERSION_CLEAN }} - Linux Binaries
+
+          Pre-built libraries for Linux (x86, x64, armv7, armv8).
+
+          ## 📦 What's Included
+
+          - **x86** - 32-bit x86 binaries (if available)
+          - **x64** - 64-bit x86-64 binaries
+          - **armv7** - 32-bit ARMv7 binaries (armhf)
+          - **armv8** - 64-bit ARMv8/AArch64 binaries
+
+          ## 🎯 Contents
+
+          Each architecture directory contains:
+          - `lib/` - Shared (.so) and static (.a) libraries
+          - `include/` - Header files
+          - `bin/` - Utility executables
+
+          ## ⚙️ Build Configuration
+
+          - **JPEG8 Compatibility**: ${{ github.event.inputs.jpeg8 == 'true' && '✅ Enabled' || '❌ Disabled' }}
+          - **JPEG7 Compatibility**: ${{ github.event.inputs.jpeg7 == 'true' && '✅ Enabled' || '❌ Disabled' }}
+          - **SIMD Optimizations**: ${{ github.event.inputs.enable_simd == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **Arithmetic Encoding**: ${{ github.event.inputs.enable_arith_enc == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **Arithmetic Decoding**: ${{ github.event.inputs.enable_arith_dec == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **TurboJPEG API**: ${{ github.event.inputs.enable_turbojpeg == 'false' && '❌ Disabled' || '✅ Enabled' }}
+
+          ## 📥 Installation
+
+          1. Download `libjpeg-turbo-linux.tar.gz`
+          2. Extract: `tar -xzf libjpeg-turbo-linux.tar.gz`
+          3. Select the appropriate architecture folder
+          4. Copy libraries to your system or application:
+             ```bash
+             # System-wide (requires sudo)
+             sudo cp x64/lib/* /usr/local/lib/
+             sudo cp x64/include/* /usr/local/include/
+             sudo ldconfig
+             ```
+          5. Or set `LD_LIBRARY_PATH` for local usage:
+             ```bash
+             export LD_LIBRARY_PATH=/path/to/libs:$LD_LIBRARY_PATH
+             ```
+
+          ## 🔗 Linking
+
+          Link against the libraries when building your application:
+          - For libjpeg: `-ljpeg`
+          - For libturbojpeg: `-lturbojpeg`
+
+          ## 🔐 Checksums
+
+          See `checksums.txt` for SHA256 verification.
+
+          ## 📖 Documentation
+
+          - [libjpeg-turbo Official Docs](https://libjpeg-turbo.org/)
+          - [Original Release Notes](https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/${{ env.VERSION_CLEAN }})
+
+          ---
+
+          Built with ❤️ using GitHub Actions
+        files: |
+          build/output/libjpeg-turbo-*-linux.tar.gz
+          build/output/checksums.txt
+        draft: false
+        prerelease: false
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
