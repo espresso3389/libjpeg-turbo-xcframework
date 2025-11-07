@@ -24,6 +24,11 @@ fetch_libjpeg_turbo_source() {
     export VERSION_CLEAN
 
     echo "Downloading libjpeg-turbo version: $VERSION"
+
+    # Create build root directory if it doesn't exist
+    mkdir -p "$BUILD_ROOT"
+
+    cd "$BUILD_ROOT"
     curl -L "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/${VERSION}.tar.gz" -o libjpeg-turbo.tar.gz
 
     # Remove old source if exists
@@ -33,8 +38,10 @@ fetch_libjpeg_turbo_source() {
 
     echo "Extracting source..."
     tar -xzf libjpeg-turbo.tar.gz
-    mv "libjpeg-turbo-${VERSION_CLEAN}" "$SOURCE_DIR"
+    mv "libjpeg-turbo-${VERSION_CLEAN}" source
     rm libjpeg-turbo.tar.gz
+
+    cd "$SCRIPT_DIR"
 
     print_success "Source downloaded and extracted to $SOURCE_DIR"
 }

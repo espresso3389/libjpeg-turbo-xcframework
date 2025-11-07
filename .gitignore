@@ -2,13 +2,5 @@
 .claude/
 .serena/
 
-# Build artifacts
+# Build artifacts - everything goes in build/
 build/
-install/
-frameworks/
-libjpeg-turbo-source/
-*.xcframework
-*.zip
-*.tar.gz
-checksums.txt
-build.log

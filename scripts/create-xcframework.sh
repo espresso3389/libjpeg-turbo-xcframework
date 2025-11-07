@@ -64,7 +64,7 @@ create_xcframeworks() {
         -framework "${FRAMEWORKS_DIR}/ios/libjpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/ios-simulator/libjpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/macos/libjpeg.framework" \
-        -output "${SCRIPT_DIR}/libjpeg.xcframework"
+        -output "${OUTPUT_DIR}/libjpeg.xcframework"
     print_success "Created libjpeg.xcframework"
 
     # Create libturbojpeg frameworks for iOS, iOS Simulator, and macOS
@@ -79,7 +79,7 @@ create_xcframeworks() {
         -framework "${FRAMEWORKS_DIR}/ios/libturbojpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/ios-simulator/libturbojpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/macos/libturbojpeg.framework" \
-        -output "${SCRIPT_DIR}/libturbojpeg.xcframework"
+        -output "${OUTPUT_DIR}/libturbojpeg.xcframework"
     print_success "Created libturbojpeg.xcframework"
 }
 
@@ -88,8 +88,9 @@ create_archive() {
     local archive_name="libjpeg-turbo-${version}-xcframework.zip"
 
     echo "Creating archive: ${archive_name}..."
-    cd "$SCRIPT_DIR"
+    cd "$OUTPUT_DIR"
     zip -r "$archive_name" libjpeg.xcframework libturbojpeg.xcframework
 
     print_success "Created archive: ${archive_name}"
+    cd "$SCRIPT_DIR"
 }

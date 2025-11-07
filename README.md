@@ -56,13 +56,13 @@ This removes build directories, intermediate files, and output artifacts.
 
 ### Output
 
-After a successful build, you'll find:
+After a successful build, all output files will be in `build/output/`:
 
-- `libjpeg.xcframework` - Standard libjpeg library
-- `libturbojpeg.xcframework` - TurboJPEG API library
-- `libjpeg-turbo-{version}-xcframework.zip` - Archive of both frameworks
-- `checksums.txt` - SHA256 checksums for verification
-- `Package.swift` - Ready-to-use Swift Package Manager manifest
+- `build/output/libjpeg.xcframework` - Standard libjpeg library
+- `build/output/libturbojpeg.xcframework` - TurboJPEG API library
+- `build/output/libjpeg-turbo-{version}-xcframework.zip` - Archive of both frameworks
+- `build/output/checksums.txt` - SHA256 checksums for verification
+- `build/output/Package.swift` - Ready-to-use Swift Package Manager manifest
 
 ## Project Structure
 
@@ -107,7 +107,11 @@ Since all build logic is now in shell scripts, you can:
 
 1. Run individual scripts to test specific steps
 2. Add debug output by modifying the scripts
-3. Inspect intermediate build artifacts in `build/` and `install/` directories
+3. Inspect intermediate build artifacts in `build/` directory:
+   - `build/source/` - Downloaded libjpeg-turbo source
+   - `build/install/` - Built libraries for each platform
+   - `build/frameworks/` - Intermediate framework structures
+   - `build/output/` - Final XCFrameworks and distribution files
 4. Run the entire build locally before pushing to CI
 
 Example: Test only the build step:

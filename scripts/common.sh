@@ -62,8 +62,10 @@ get_cpu_count() {
 # Global variables that will be set by fetch-source.sh
 VERSION_CLEAN=""
 
-# Directories
-SOURCE_DIR="${SCRIPT_DIR}/libjpeg-turbo-source"
-BUILD_DIR="${SCRIPT_DIR}/build"
-INSTALL_DIR="${SCRIPT_DIR}/install"
-FRAMEWORKS_DIR="${SCRIPT_DIR}/frameworks"
+# Directories - all build artifacts go inside build/
+BUILD_ROOT="${SCRIPT_DIR}/build"
+SOURCE_DIR="${BUILD_ROOT}/source"
+BUILD_DIR="${BUILD_ROOT}/cmake-build"
+INSTALL_DIR="${BUILD_ROOT}/install"
+FRAMEWORKS_DIR="${BUILD_ROOT}/frameworks"
+OUTPUT_DIR="${BUILD_ROOT}/output"

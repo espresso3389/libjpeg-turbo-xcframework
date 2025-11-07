@@ -47,11 +47,11 @@ jobs:
       with:
         name: libjpeg-turbo-xcframework
         path: |
-          libjpeg.xcframework
-          libturbojpeg.xcframework
-          libjpeg-turbo-*-xcframework.zip
-          Package.swift
-          checksums.txt
+          build/output/libjpeg.xcframework
+          build/output/libturbojpeg.xcframework
+          build/output/libjpeg-turbo-*-xcframework.zip
+          build/output/Package.swift
+          build/output/checksums.txt
         retention-days: 30
     
     
@@ -110,9 +110,9 @@ jobs:
           Built with ❤️ using GitHub Actions
           Triggered by: ${{ github.event_name }}
         files: |
-          libjpeg-turbo-*-xcframework.zip
-          checksums.txt
-          Package.swift
+          build/output/libjpeg-turbo-*-xcframework.zip
+          build/output/checksums.txt
+          build/output/Package.swift
         draft: false
         prerelease: false
         fail_on_unmatched_files: true

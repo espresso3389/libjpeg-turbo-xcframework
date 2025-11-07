@@ -40,7 +40,7 @@ generate_package_swift() {
     fi
 
     # Read checksum from checksums.txt
-    local checksum_file="${SCRIPT_DIR}/checksums.txt"
+    local checksum_file="${OUTPUT_DIR}/checksums.txt"
     if [ ! -f "$checksum_file" ]; then
         print_error "checksums.txt not found. Cannot generate Package.swift"
         return 1
@@ -54,7 +54,7 @@ generate_package_swift() {
         return 1
     fi
 
-    local package_file="${SCRIPT_DIR}/Package.swift"
+    local package_file="${OUTPUT_DIR}/Package.swift"
 
     echo "Generating Package.swift..."
     echo "  Repository: $repo_url"

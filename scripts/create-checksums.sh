@@ -7,7 +7,7 @@ generate_checksums() {
     local archive_name="libjpeg-turbo-${version}-xcframework.zip"
 
     echo "Generating SHA256 checksums..."
-    cd "$SCRIPT_DIR"
+    cd "$OUTPUT_DIR"
 
     shasum -a 256 "$archive_name" > checksums.txt
 
@@ -17,4 +17,5 @@ generate_checksums() {
     echo ""
 
     print_success "Generated checksums.txt"
+    cd "$SCRIPT_DIR"
 }

@@ -69,9 +69,9 @@ build_platform() {
 }
 
 build_all_platforms() {
-    # Clean build and install directories
-    rm -rf "$BUILD_DIR" "$INSTALL_DIR"
-    mkdir -p "$BUILD_DIR" "$INSTALL_DIR"
+    # Clean build, install, and output directories (but preserve source)
+    rm -rf "$BUILD_DIR" "$INSTALL_DIR" "$FRAMEWORKS_DIR" "$OUTPUT_DIR"
+    mkdir -p "$BUILD_DIR" "$INSTALL_DIR" "$OUTPUT_DIR"
 
     # Build iOS arm64 (device)
     build_platform "ios" "arm64" "12.0" "-fembed-bitcode" ""

@@ -8,18 +8,7 @@ cd "$SCRIPT_DIR"
 
 echo "Cleaning build artifacts..."
 
-# Remove build directories
+# Remove entire build directory (contains everything)
 rm -rf build/
-rm -rf install/
-rm -rf frameworks/
-rm -rf libjpeg-turbo-source/
-
-# Remove output files
-rm -rf *.xcframework
-rm -f *.zip
-rm -f *.tar.gz
-rm -f checksums.txt
-rm -f Package.swift
-rm -f build.log
 
 echo "✓ Clean complete"
