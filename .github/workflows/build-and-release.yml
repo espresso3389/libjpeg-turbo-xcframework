@@ -117,13 +117,6 @@ jobs:
           BUILD_CMD="$BUILD_CMD --macos-target ${{ github.event.inputs.macos_target }}"
         fi
 
-        # Always generate podspec for releases
-        BUILD_CMD="$BUILD_CMD --podspec"
-
-        # Add base URL for package manager files
-        REPO_URL="https://github.com/${{ github.repository }}"
-        BUILD_CMD="$BUILD_CMD --base-url $REPO_URL"
-
         # Add version
         BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
 
@@ -470,10 +463,13 @@ jobs:
 
         mkdir -p release
 
-        # Package Darwin artifacts
+        # Package Darwin artifacts (XCFrameworks as zip)
         if [ -d "artifacts/libjpeg-turbo-darwin-$VERSION" ]; then
           cd "artifacts/libjpeg-turbo-darwin-$VERSION"
-          tar -czf ../../release/libjpeg-turbo-darwin-$VERSION.tar.gz *
+          # Extract version without 'v' prefix for filename
+          VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
+          # Create zip with XCFrameworks only
+          zip -r "../../release/libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip" libjpeg.xcframework libturbojpeg.xcframework
           cd ../..
         fi
 
@@ -505,18 +501,45 @@ jobs:
           cd ../..
         fi
 
-        # Copy podspec and checksums from Darwin artifacts if they exist
-        if [ -f "artifacts/libjpeg-turbo-darwin-$VERSION/libjpeg-turbo.podspec" ]; then
-          cp "artifacts/libjpeg-turbo-darwin-$VERSION/libjpeg-turbo.podspec" release/
-        fi
-
-        if [ -f "artifacts/libjpeg-turbo-darwin-$VERSION/checksums.txt" ]; then
-          cp "artifacts/libjpeg-turbo-darwin-$VERSION/checksums.txt" "release/darwin-checksums.txt"
-        fi
-
         # Create checksums for all release archives
         cd release
         sha256sum *.tar.gz *.zip > checksums.txt 2>/dev/null || true
+
+        # Generate podspec with correct checksum
+        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
+        DARWIN_CHECKSUM=$(grep "libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip" checksums.txt | awk '{print $1}')
+
+        if [ -n "$DARWIN_CHECKSUM" ]; then
+          cat > libjpeg-turbo.podspec << EOF
+        Pod::Spec.new do |s|
+          s.name             = 'libjpeg-turbo'
+          s.version          = '${VERSION_CLEAN}'
+          s.summary          = 'libjpeg-turbo XCFramework for iOS and macOS'
+          s.description      = <<-DESC
+            libjpeg-turbo is a JPEG image codec that uses SIMD instructions to accelerate
+            baseline JPEG compression and decompression on x86, x86-64, Arm, PowerPC, and
+            MIPS systems. This pod provides prebuilt XCFrameworks for iOS and macOS.
+          DESC
+
+          s.homepage         = 'https://github.com/${{ github.repository }}'
+          s.license          = { :type => 'BSD', :file => 'LICENSE.md' }
+          s.author           = { 'libjpeg-turbo' => 'information@libjpeg-turbo.org' }
+          s.source           = {
+            :http => 'https://github.com/${{ github.repository }}/releases/download/${VERSION}/libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip',
+            :sha256 => '${DARWIN_CHECKSUM}'
+          }
+
+          s.ios.deployment_target = '${{ github.event.inputs.ios_target }}'
+          s.osx.deployment_target = '${{ github.event.inputs.macos_target }}'
+
+          s.vendored_frameworks = 'libjpeg.xcframework', 'libturbojpeg.xcframework'
+
+          s.libraries = 'c++'
+        end
+        EOF
+          echo "Generated libjpeg-turbo.podspec with checksum: $DARWIN_CHECKSUM"
+        fi
+
         cd ..
 
     - name: Generate release notes
@@ -527,10 +550,10 @@ jobs:
         VERSION="${{ steps.prepare.outputs.version }}"
         VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
 
-        # Extract checksum for Darwin XCFramework zip
+        # Extract checksum for Darwin XCFramework zip from release checksums
         DARWIN_CHECKSUM=""
-        if [ -f "artifacts/libjpeg-turbo-darwin-${VERSION}/checksums.txt" ]; then
-          DARWIN_CHECKSUM=$(awk '{print $1}' "artifacts/libjpeg-turbo-darwin-${VERSION}/checksums.txt")
+        if [ -f "release/checksums.txt" ]; then
+          DARWIN_CHECKSUM=$(grep "libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip" release/checksums.txt | awk '{print $1}')
         fi
 
         # Format boolean values

@@ -42,8 +42,6 @@ WITH_ARITH_DEC=1
 WITH_TURBOJPEG=1
 IOS_DEPLOYMENT_TARGET="12.0"
 MACOS_DEPLOYMENT_TARGET="11.0"
-GENERATE_PODSPEC=0
-BASE_URL=""
 
 # =============================================================================
 # Common Utility Functions
@@ -392,122 +390,9 @@ create_xcframeworks() {
     print_success "Created libturbojpeg.xcframework"
 }
 
-create_archive() {
-    local version="$1"
-    local archive_name="libjpeg-turbo-${version}-xcframework.zip"
+# Archive creation removed - GitHub Actions will handle packaging
 
-    echo "Creating archive: ${archive_name}..."
-    cd "$OUTPUT_DIR"
-    zip -r "$archive_name" libjpeg.xcframework libturbojpeg.xcframework
-
-    print_success "Created archive: ${archive_name}"
-    cd "$PROJECT_ROOT"
-}
-
-# =============================================================================
-# Packaging Functions
-# =============================================================================
-
-generate_checksums() {
-    local version="$1"
-    local archive_name="libjpeg-turbo-${version}-xcframework.zip"
-
-    echo "Generating SHA256 checksums..."
-    cd "$OUTPUT_DIR"
-
-    shasum -a 256 "$archive_name" > checksums.txt
-
-    echo ""
-    echo "Checksums:"
-    cat checksums.txt
-    echo ""
-
-    print_success "Generated checksums.txt"
-    cd "$PROJECT_ROOT"
-}
-
-generate_podspec() {
-    local version="$1"
-
-    # Use provided base URL or get repository URL from git
-    local repo_url="$BASE_URL"
-    if [ -z "$repo_url" ]; then
-        repo_url=$(get_git_repo_url)
-    fi
-
-    if [ -z "$repo_url" ]; then
-        print_warning "Could not detect GitHub repository URL from git remote"
-        print_warning "Use --base-url to specify the repository URL"
-        print_warning "Skipping podspec generation"
-        echo "You can manually create podspec using the template in README.md"
-        return
-    fi
-
-    # Read checksum from checksums.txt
-    local checksum_file="${OUTPUT_DIR}/checksums.txt"
-    if [ ! -f "$checksum_file" ]; then
-        print_error "checksums.txt not found. Cannot generate podspec"
-        return 1
-    fi
-
-    # Extract just the checksum (first field)
-    local checksum=$(awk '{print $1}' "$checksum_file")
-
-    if [ -z "$checksum" ]; then
-        print_error "Could not read checksum from checksums.txt"
-        return 1
-    fi
-
-    local podspec_file="${OUTPUT_DIR}/libjpeg-turbo.podspec"
-
-    echo "Generating libjpeg-turbo.podspec..."
-    echo "  Repository: $repo_url"
-    echo "  Version: $version"
-    echo "  Checksum: $checksum"
-    echo ""
-
-    cat > "$podspec_file" << EOF
-Pod::Spec.new do |s|
-  s.name             = 'libjpeg-turbo'
-  s.version          = '${version}'
-  s.summary          = 'libjpeg-turbo XCFramework for iOS and macOS'
-  s.description      = <<-DESC
-    libjpeg-turbo is a JPEG image codec that uses SIMD instructions to accelerate
-    baseline JPEG compression and decompression on x86, x86-64, Arm, PowerPC, and
-    MIPS systems. This pod provides prebuilt XCFrameworks for iOS and macOS.
-  DESC
-
-  s.homepage         = '${repo_url}'
-  s.license          = { :type => 'BSD', :file => 'LICENSE.md' }
-  s.author           = { 'libjpeg-turbo' => 'information@libjpeg-turbo.org' }
-  s.source           = {
-    :http => '${repo_url}/releases/download/${version}/libjpeg-turbo-${version}-xcframework.zip',
-    :sha256 => '${checksum}'
-  }
-
-  s.ios.deployment_target = '12.0'
-  s.osx.deployment_target = '11.0'
-
-  s.vendored_frameworks = 'libjpeg.xcframework', 'libturbojpeg.xcframework'
-
-  s.libraries = 'c++'
-end
-EOF
-
-    print_success "Generated libjpeg-turbo.podspec"
-    echo ""
-    echo "Podspec has been created with:"
-    echo "  - Repository: $repo_url"
-    echo "  - Version: $version"
-    echo "  - Checksum: $checksum"
-    echo ""
-    echo "To use:"
-    echo "  1. Commit the podspec to your repository"
-    echo "  2. Tag with version ${version}"
-    echo "  3. Push to GitHub"
-    echo "  4. Optionally publish to CocoaPods trunk"
-    echo ""
-}
+# Podspec generation removed - GitHub Actions will handle it
 
 # =============================================================================
 # Main Execution
@@ -537,9 +422,6 @@ Options:
   --ios-target VERSION Set iOS deployment target (default: 12.0)
   --macos-target VERSION
                        Set macOS deployment target (default: 11.0)
-  --podspec            Generate .podspec for CocoaPods
-  --base-url URL       Base URL for release downloads (default: auto-detect from git)
-                       Example: https://github.com/username/repo
   -h, --help           Display this help message
 
 Examples:
@@ -551,8 +433,6 @@ Examples:
   $0 --jpeg8 --no-arith-enc 3.0.1 # Build v3.0.1 with JPEG8, no arithmetic encoding
   $0 --ios-target 15.0 3.0.1      # Build v3.0.1 with iOS 15.0 minimum target
   $0 --macos-target 12.0 latest   # Build latest with macOS 12.0 minimum target
-  $0 --podspec latest             # Build latest and generate .podspec
-  $0 --podspec --base-url https://github.com/user/repo latest  # Custom base URL
 
 Build Options:
   JPEG8:        Emulate libjpeg v8 API/ABI (incompatible with v6b)
@@ -619,18 +499,6 @@ while [[ $# -gt 0 ]]; do
             MACOS_DEPLOYMENT_TARGET="$2"
             shift 2
             ;;
-        --podspec)
-            GENERATE_PODSPEC=1
-            shift
-            ;;
-        --base-url)
-            if [[ -z "$2" || "$2" == -* ]]; then
-                echo "Error: --base-url requires a URL argument"
-                exit 1
-            fi
-            BASE_URL="$2"
-            shift 2
-            ;;
         -*)
             echo "Unknown option: $1"
             echo "Use --help for usage information"
@@ -673,29 +541,11 @@ create_universal_binaries
 print_step "Creating XCFrameworks"
 create_xcframeworks
 
-# Step 5: Create archive
-print_step "Creating archive"
-create_archive "$VERSION_CLEAN"
-
-# Step 6: Generate checksums
-print_step "Generating checksums"
-generate_checksums "$VERSION_CLEAN"
-
-# Step 7: Generate podspec (if requested)
-if [ "$GENERATE_PODSPEC" -eq 1 ]; then
-    print_step "Generating podspec"
-    generate_podspec "$VERSION_CLEAN"
-fi
-
 print_header "Build Complete!"
 echo "Output files in build/output/:"
-echo "  - libjpeg.xcframework"
-echo "  - libturbojpeg.xcframework"
-echo "  - libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip"
-echo "  - checksums.txt"
-if [ "$GENERATE_PODSPEC" -eq 1 ]; then
-    echo "  - libjpeg-turbo.podspec"
-fi
+echo "  - libjpeg.xcframework/"
+echo "  - libturbojpeg.xcframework/"
 echo ""
 echo "Full path: ${OUTPUT_DIR}"
+echo "Note: GitHub Actions will create the zip archive and podspec from these files"
 echo ""

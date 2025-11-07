@@ -426,66 +426,53 @@ function Build-WindowsPlatform {
     }
 }
 
-function New-WindowsArchive {
-    param([string]$Version)
+function Organize-WindowsOutput {
+    param([string]$Version, [string]$Arch)
 
-    $ArchiveName = "libjpeg-turbo-$Version-windows"
-    $ArchivePath = Join-Path $OutputDir $ArchiveName
+    Write-Step "Organizing Windows output"
 
-    Write-Step "Creating Windows archive"
+    # Create output directory structure for single architecture
+    New-Item -ItemType Directory -Force -Path "$OutputDir\bin" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$OutputDir\lib" | Out-Null
+    New-Item -ItemType Directory -Force -Path "$OutputDir\include" | Out-Null
 
-    # Create archive directory structure
-    foreach ($Arch in @("x86", "x64", "arm64")) {
-        New-Item -ItemType Directory -Force -Path "$ArchivePath\$Arch\bin" | Out-Null
-        New-Item -ItemType Directory -Force -Path "$ArchivePath\$Arch\lib" | Out-Null
-        New-Item -ItemType Directory -Force -Path "$ArchivePath\$Arch\include" | Out-Null
+    $InstallPath = Join-Path $InstallDir "windows-$Arch"
+
+    # Copy DLLs and executables
+    $BinPath = Join-Path $InstallPath "bin"
+    if (Test-Path $BinPath) {
+        Get-ChildItem -Path $BinPath -Filter "*.dll" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "$OutputDir\bin" -Force
+        Get-ChildItem -Path $BinPath -Filter "*.exe" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "$OutputDir\bin" -Force
     }
 
-    # Copy files for each architecture
-    foreach ($Arch in @("x86", "x64", "arm64")) {
-        $InstallPath = Join-Path $InstallDir "windows-$Arch"
+    # Copy import libraries
+    $LibPath = Join-Path $InstallPath "lib"
+    if (Test-Path $LibPath) {
+        Get-ChildItem -Path $LibPath -Filter "*.lib" -ErrorAction SilentlyContinue |
+            Copy-Item -Destination "$OutputDir\lib" -Force
+    }
 
-        # Copy DLLs and executables
-        $BinPath = Join-Path $InstallPath "bin"
-        if (Test-Path $BinPath) {
-            Get-ChildItem -Path $BinPath -Filter "*.dll" -ErrorAction SilentlyContinue |
-                Copy-Item -Destination "$ArchivePath\$Arch\bin" -Force
-            Get-ChildItem -Path $BinPath -Filter "*.exe" -ErrorAction SilentlyContinue |
-                Copy-Item -Destination "$ArchivePath\$Arch\bin" -Force
-        }
-
-        # Copy import libraries
-        $LibPath = Join-Path $InstallPath "lib"
-        if (Test-Path $LibPath) {
-            Get-ChildItem -Path $LibPath -Filter "*.lib" -ErrorAction SilentlyContinue |
-                Copy-Item -Destination "$ArchivePath\$Arch\lib" -Force
-        }
-
-        # Copy headers
-        $IncludePath = Join-Path $InstallPath "include"
-        if (Test-Path $IncludePath) {
-            Get-ChildItem -Path $IncludePath -Recurse |
-                Copy-Item -Destination "$ArchivePath\$Arch\include" -Force
-        }
+    # Copy headers
+    $IncludePath = Join-Path $InstallPath "include"
+    if (Test-Path $IncludePath) {
+        Get-ChildItem -Path $IncludePath -Recurse |
+            Copy-Item -Destination "$OutputDir\include" -Force
     }
 
     # Create README
     $ReadmeContent = @"
-libjpeg-turbo $Version - Windows Binaries
+libjpeg-turbo $Version - Windows $Arch Binaries
 ============================================
 
-This archive contains pre-built libjpeg-turbo libraries for Windows.
+This package contains pre-built libjpeg-turbo libraries for Windows $Arch.
 
 Directory Structure:
 -------------------
-x86\      - 32-bit x86 binaries
-x64\      - 64-bit x86-64 binaries
-arm64\    - 64-bit ARM64 binaries
-
-Each architecture directory contains:
-  bin\      - DLL files and executables
-  lib\      - Import libraries (.lib files)
-  include\  - Header files
+bin\      - DLL files and executables
+lib\      - Import libraries (.lib files)
+include\  - Header files
 
 Build Configuration:
 -------------------
@@ -498,22 +485,15 @@ TurboJPEG API:           $WithTurbojpeg
 
 Usage:
 ------
-1. Copy the appropriate architecture's DLL files to your application directory
+1. Copy the DLL files to your application directory
 2. Link against the .lib files when building your application
 3. Include the header files in your project
 
 For more information, visit: https://libjpeg-turbo.org/
 "@
 
-    Set-Content -Path "$ArchivePath\README.txt" -Value $ReadmeContent
-
-    # Create zip archive
-    $ZipPath = "$ArchivePath.zip"
-    if (Test-Path $ZipPath) {
-        Remove-Item $ZipPath -Force
-    }
-    Compress-Archive -Path $ArchivePath -DestinationPath $ZipPath -CompressionLevel Optimal
-    Write-Success "Created $ArchiveName.zip"
+    Set-Content -Path "$OutputDir\README.txt" -Value $ReadmeContent
+    Write-Success "Organized output files"
 }
 
 # Main execution
@@ -589,9 +569,15 @@ if (-not $Success) {
 
 Write-Success "All Windows platforms built successfully"
 
-# Create archive (VersionClean was already set by Get-LibjpegTurboSource)
-New-WindowsArchive -Version $VersionClean
+# Organize output (VersionClean was already set by Get-LibjpegTurboSource)
+Organize-WindowsOutput -Version $VersionClean -Arch $Arch
 
 Write-Header "Build Complete!"
 Write-Host "Output files in $OutputDir"
+Write-Host "  - bin\"
+Write-Host "  - lib\"
+Write-Host "  - include\"
+Write-Host "  - README.txt"
+Write-Host ""
+Write-Host "Note: GitHub Actions will create the zip archive from these files"
 Write-Host ""

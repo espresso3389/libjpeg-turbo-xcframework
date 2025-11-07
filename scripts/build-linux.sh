@@ -235,41 +235,39 @@ build_for_architecture() {
 # Packaging Functions
 # =============================================================================
 
-create_linux_archive() {
+organize_output() {
     local version="$1"
     local arch="$2"
-    local archive_name="libjpeg-turbo-${version}-linux-${arch}"
-    local archive_path="${OUTPUT_DIR}/${archive_name}"
 
-    print_step "Creating Linux archive"
+    print_step "Organizing output files"
 
-    # Create archive directory structure
-    mkdir -p "${archive_path}"/{lib,include,bin}
+    # Create output directory structure
+    mkdir -p "${OUTPUT_DIR}"/{lib,include,bin}
 
     local arch_dir="${INSTALL_DIR}/linux-${arch}"
 
     # Copy shared libraries
     if [ -d "${arch_dir}/lib" ]; then
-        find "${arch_dir}/lib" -name "*.so*" -exec cp -P {} "${archive_path}/lib/" \; 2>/dev/null || true
-        find "${arch_dir}/lib" -name "*.a" -exec cp {} "${archive_path}/lib/" \; 2>/dev/null || true
+        find "${arch_dir}/lib" -name "*.so*" -exec cp -P {} "${OUTPUT_DIR}/lib/" \; 2>/dev/null || true
+        find "${arch_dir}/lib" -name "*.a" -exec cp {} "${OUTPUT_DIR}/lib/" \; 2>/dev/null || true
     fi
 
     # Copy headers
     if [ -d "${arch_dir}/include" ]; then
-        cp -r "${arch_dir}/include"/* "${archive_path}/include/" 2>/dev/null || true
+        cp -r "${arch_dir}/include"/* "${OUTPUT_DIR}/include/" 2>/dev/null || true
     fi
 
     # Copy binaries
     if [ -d "${arch_dir}/bin" ]; then
-        cp -r "${arch_dir}/bin"/* "${archive_path}/bin/" 2>/dev/null || true
+        cp -r "${arch_dir}/bin"/* "${OUTPUT_DIR}/bin/" 2>/dev/null || true
     fi
 
-    # Create README for the archive
-    cat > "${archive_path}/README.txt" << EOF
+    # Create README
+    cat > "${OUTPUT_DIR}/README.txt" << EOF
 libjpeg-turbo ${version} - Linux ${arch} Binaries
 =================================================
 
-This archive contains pre-built libjpeg-turbo libraries for Linux ${arch}.
+This package contains pre-built libjpeg-turbo libraries for Linux ${arch}.
 
 Directory Structure:
 -------------------
@@ -300,27 +298,18 @@ You may need to add the library directory to LD_LIBRARY_PATH:
 For more information, visit: https://libjpeg-turbo.org/
 EOF
 
-    # Create tar.gz archive
-    cd "${OUTPUT_DIR}"
-    if command -v tar &> /dev/null; then
-        tar -czf "${archive_name}.tar.gz" "${archive_name}"
-        print_success "Created ${archive_name}.tar.gz"
-    else
-        print_warning "tar command not found, archive directory created but not compressed"
-    fi
-
-    cd "$PROJECT_ROOT"
+    print_success "Organized output files"
 }
 
 generate_checksums() {
     local version="$1"
     local arch="$2"
-    local archive_name="libjpeg-turbo-${version}-linux-${arch}.tar.gz"
 
     echo "Generating SHA256 checksums..."
     cd "$OUTPUT_DIR"
 
-    sha256sum "$archive_name" > checksums.txt
+    # Generate checksums for libraries and binaries
+    find lib bin -type f 2>/dev/null | sort | xargs sha256sum > checksums.txt || true
 
     echo ""
     echo "Checksums:"
@@ -462,9 +451,9 @@ fetch_libjpeg_turbo_source "$VERSION"
 print_step "Building for $ARCH"
 build_for_architecture "$ARCH"
 
-# Step 3: Create archive
-print_step "Creating archive"
-create_linux_archive "$VERSION_CLEAN" "$ARCH"
+# Step 3: Organize output
+print_step "Organizing output"
+organize_output "$VERSION_CLEAN" "$ARCH"
 
 # Step 4: Generate checksums
 print_step "Generating checksums"
@@ -472,8 +461,12 @@ generate_checksums "$VERSION_CLEAN" "$ARCH"
 
 print_header "Build Complete!"
 echo "Output files in build/output/:"
-echo "  - libjpeg-turbo-${VERSION_CLEAN}-linux-${ARCH}.tar.gz"
+echo "  - lib/"
+echo "  - include/"
+echo "  - bin/"
+echo "  - README.txt"
 echo "  - checksums.txt"
 echo ""
 echo "Full path: ${OUTPUT_DIR}"
+echo "Note: GitHub Actions will create the tar.gz archive from these files"
 echo ""
