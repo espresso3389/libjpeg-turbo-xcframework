@@ -9,6 +9,7 @@ $ErrorActionPreference = "Stop"
 
 # Default values
 $Version = ""
+$Arch = "all"  # all, x86, x64, arm64
 $WithJpeg8 = 0
 $WithJpeg7 = 0
 $WithSimd = 1
@@ -18,7 +19,14 @@ $WithTurbojpeg = 1
 $ShowHelp = $false
 
 # Parse arguments (supports both PowerShell style and batch style)
+$NextIsArch = $false
 foreach ($arg in $Arguments) {
+    if ($NextIsArch) {
+        $Arch = $arg
+        $NextIsArch = $false
+        continue
+    }
+
     switch -Regex ($arg) {
         "^(-Help|--help|-h)$" {
             $ShowHelp = $true
@@ -26,6 +34,9 @@ foreach ($arg in $Arguments) {
         "^(-Version|-v)$" {
             # Next argument should be the version
             continue
+        }
+        "^(-Arch|--arch)$" {
+            $NextIsArch = $true
         }
         "^(-Jpeg8|--jpeg8)$" {
             $WithJpeg8 = 1
@@ -70,6 +81,8 @@ Arguments:
                           Use 'latest' to build the most recent release
 
 Options:
+  -Arch ARCH              Architecture to build (default: all)
+                          Options: all, x86, x64, arm64
   -Jpeg8                  Build with libjpeg v8 API/ABI compatibility
   -Jpeg7                  Build with libjpeg v7 API/ABI compatibility
   -NoSimd                 Disable SIMD extensions
@@ -557,11 +570,17 @@ if ($UseNinja) {
 Write-Host ""
 
 # Build all architectures
-Write-Step "Building for all Windows platforms"
+# Build based on architecture selection
 $Success = $true
-$Success = (Build-WindowsPlatform -Arch "x86" -Generator $Generator -UseNinja $UseNinja) -and $Success
-$Success = (Build-WindowsPlatform -Arch "x64" -Generator $Generator -UseNinja $UseNinja) -and $Success
-$Success = (Build-WindowsPlatform -Arch "arm64" -Generator $Generator -UseNinja $UseNinja) -and $Success
+if ($Arch -eq "all") {
+    Write-Step "Building for all Windows platforms"
+    $Success = (Build-WindowsPlatform -Arch "x86" -Generator $Generator -UseNinja $UseNinja) -and $Success
+    $Success = (Build-WindowsPlatform -Arch "x64" -Generator $Generator -UseNinja $UseNinja) -and $Success
+    $Success = (Build-WindowsPlatform -Arch "arm64" -Generator $Generator -UseNinja $UseNinja) -and $Success
+} else {
+    Write-Step "Building for Windows $Arch"
+    $Success = Build-WindowsPlatform -Arch $Arch -Generator $Generator -UseNinja $UseNinja
+}
 
 if (-not $Success) {
     Write-ErrorMsg "Build failed for one or more platforms"

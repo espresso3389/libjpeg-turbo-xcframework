@@ -140,7 +140,7 @@ jobs:
         retention-days: 7
 
   # Build for Windows x64
-  build-windows:
+  build-windows-x64:
     runs-on: windows-latest
     permissions:
       contents: write
@@ -153,13 +153,13 @@ jobs:
       run: |
         choco install nasm -y
 
-    - name: Build Windows binaries
+    - name: Build Windows x64 binaries
       shell: cmd
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         REM Build command with options
-        set BUILD_CMD=build.bat
+        set BUILD_CMD=build.bat --arch x64
 
         REM Add build options based on inputs
         if "${{ github.event.inputs.jpeg8 }}"=="true" (
@@ -205,10 +205,83 @@ jobs:
           echo "version=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
         }
 
-    - name: Upload Windows artifacts
+    - name: Upload Windows x64 artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: libjpeg-turbo-windows-${{ steps.version.outputs.version }}
+        name: libjpeg-turbo-windows-x64-${{ steps.version.outputs.version }}
+        path: build/output/
+        retention-days: 7
+
+  # Build for Windows ARM64
+  build-windows-arm64:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        choco install nasm -y
+
+    - name: Build Windows ARM64 binaries
+      shell: cmd
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        REM Build command with options
+        set BUILD_CMD=build.bat --arch arm64
+
+        REM Add build options based on inputs
+        if "${{ github.event.inputs.jpeg8 }}"=="true" (
+          set BUILD_CMD=%BUILD_CMD% --jpeg8
+        )
+
+        if "${{ github.event.inputs.jpeg7 }}"=="true" (
+          set BUILD_CMD=%BUILD_CMD% --jpeg7
+        )
+
+        if "${{ github.event.inputs.enable_simd }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-simd
+        )
+
+        if "${{ github.event.inputs.enable_arith_enc }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-arith-enc
+        )
+
+        if "${{ github.event.inputs.enable_arith_dec }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-arith-dec
+        )
+
+        if "${{ github.event.inputs.enable_turbojpeg }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-turbojpeg
+        )
+
+        REM Add version
+        set BUILD_CMD=%BUILD_CMD% ${{ github.event.inputs.version || 'latest' }}
+
+        echo Build command: %BUILD_CMD%
+        call %BUILD_CMD%
+
+    - name: Get version
+      id: version
+      shell: pwsh
+      run: |
+        $CMakeFile = "build/source/CMakeLists.txt"
+        $Content = Get-Content $CMakeFile -Raw
+        if ($Content -match "set\(VERSION\s+([0-9.]+)") {
+          $Version = $Matches[1]
+          echo "version=$Version" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "version=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Upload Windows ARM64 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-windows-arm64-${{ steps.version.outputs.version }}
         path: build/output/
         retention-days: 7
 
@@ -364,7 +437,7 @@ jobs:
 
   # Create release with all artifacts
   release:
-    needs: [build-darwin, build-windows, build-linux-x64, build-linux-arm64]
+    needs: [build-darwin, build-windows-x64, build-windows-arm64, build-linux-x64, build-linux-arm64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -397,26 +470,33 @@ jobs:
           cd ../..
         fi
 
-        # Package Windows artifacts
-        if [ -d "artifacts/libjpeg-turbo-windows-$VERSION" ]; then
-          cd "artifacts/libjpeg-turbo-windows-$VERSION"
-          zip -r ../../release/libjpeg-turbo-windows-$VERSION.zip *
+        # Package Windows x64 artifacts
+        if [ -d "artifacts/libjpeg-turbo-windows-x64-$VERSION" ]; then
+          cd "artifacts/libjpeg-turbo-windows-x64-$VERSION"
+          zip -r ../../release/libjpeg-turbo-windows-x64-$VERSION.zip *
           cd ../..
         fi
 
-        # Combine Linux architectures
-        mkdir -p linux-combined
+        # Package Windows ARM64 artifacts
+        if [ -d "artifacts/libjpeg-turbo-windows-arm64-$VERSION" ]; then
+          cd "artifacts/libjpeg-turbo-windows-arm64-$VERSION"
+          zip -r ../../release/libjpeg-turbo-windows-arm64-$VERSION.zip *
+          cd ../..
+        fi
+
+        # Package Linux x64 artifacts
         if [ -d "artifacts/libjpeg-turbo-linux-x64-$VERSION" ]; then
-          mkdir -p linux-combined/x64
-          cp -r "artifacts/libjpeg-turbo-linux-x64-$VERSION"/* linux-combined/x64/
+          cd "artifacts/libjpeg-turbo-linux-x64-$VERSION"
+          tar -czf ../../release/libjpeg-turbo-linux-x64-$VERSION.tar.gz *
+          cd ../..
         fi
+
+        # Package Linux ARM64 artifacts
         if [ -d "artifacts/libjpeg-turbo-linux-arm64-$VERSION" ]; then
-          mkdir -p linux-combined/arm64
-          cp -r "artifacts/libjpeg-turbo-linux-arm64-$VERSION"/* linux-combined/arm64/
+          cd "artifacts/libjpeg-turbo-linux-arm64-$VERSION"
+          tar -czf ../../release/libjpeg-turbo-linux-arm64-$VERSION.tar.gz *
+          cd ../..
         fi
-        cd linux-combined
-        tar -czf ../release/libjpeg-turbo-linux-$VERSION.tar.gz *
-        cd ..
 
         # Create checksums
         cd release
