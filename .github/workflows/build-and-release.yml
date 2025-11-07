@@ -505,9 +505,18 @@ jobs:
           cd ../..
         fi
 
-        # Create checksums
+        # Copy podspec and checksums from Darwin artifacts if they exist
+        if [ -f "artifacts/libjpeg-turbo-darwin-$VERSION/libjpeg-turbo.podspec" ]; then
+          cp "artifacts/libjpeg-turbo-darwin-$VERSION/libjpeg-turbo.podspec" release/
+        fi
+
+        if [ -f "artifacts/libjpeg-turbo-darwin-$VERSION/checksums.txt" ]; then
+          cp "artifacts/libjpeg-turbo-darwin-$VERSION/checksums.txt" "release/darwin-checksums.txt"
+        fi
+
+        # Create checksums for all release archives
         cd release
-        sha256sum * > checksums.txt
+        sha256sum *.tar.gz *.zip > checksums.txt 2>/dev/null || true
         cd ..
 
     - name: Generate release notes
@@ -602,7 +611,7 @@ jobs:
         ### CocoaPods
         Add to your \`Podfile\`:
         \`\`\`ruby
-        pod 'libjpeg-turbo', :podspec => 'https://github.com/${{ github.repository }}/releases/download/${VERSION_CLEAN}/libjpeg-turbo.podspec'
+        pod 'libjpeg-turbo', :podspec => 'https://github.com/${{ github.repository }}/releases/download/${VERSION}/libjpeg-turbo.podspec'
         \`\`\`
 
         ## 📖 Documentation
