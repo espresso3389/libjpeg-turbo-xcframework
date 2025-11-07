@@ -22,10 +22,12 @@ To build locally, you need:
 
 ### Quick Start
 
-Build the latest version:
+Build the latest version (default):
 
 ```bash
 ./build.sh
+# or explicitly
+./build.sh latest
 ```
 
 Build a specific version:
@@ -40,6 +42,18 @@ or with the version tag:
 ./build.sh v3.0.4
 ```
 
+The script will automatically fetch the latest release from GitHub when using `latest` or when no version is specified.
+
+### Cleaning
+
+To remove all build artifacts:
+
+```bash
+./clean.sh
+```
+
+This removes build directories, intermediate files, and output artifacts.
+
 ### Output
 
 After a successful build, you'll find:
@@ -48,19 +62,22 @@ After a successful build, you'll find:
 - `libturbojpeg.xcframework` - TurboJPEG API library
 - `libjpeg-turbo-{version}-xcframework.zip` - Archive of both frameworks
 - `checksums.txt` - SHA256 checksums for verification
+- `Package.swift` - Ready-to-use Swift Package Manager manifest
 
 ## Project Structure
 
 ```
 .
 ├── build.sh                          # Main build orchestration script
+├── clean.sh                          # Clean all build artifacts
 ├── scripts/
 │   ├── common.sh                     # Shared utilities and variables
 │   ├── fetch-source.sh               # Download libjpeg-turbo source
 │   ├── build-platforms.sh            # Build for each platform/arch
 │   ├── create-universal.sh           # Create universal binaries with lipo
 │   ├── create-xcframework.sh         # Generate XCFrameworks
-│   └── create-checksums.sh           # Generate SHA256 checksums
+│   ├── create-checksums.sh           # Generate SHA256 checksums
+│   └── create-package-swift.sh       # Generate Package.swift template
 └── .github/workflows/
     └── build-libjpeg-turbo-xcframework.yml  # CI/CD workflow
 ```
@@ -82,6 +99,7 @@ The build script performs the following steps:
 4. **Create XCFrameworks**: Packages frameworks for iOS and macOS
 5. **Create Archive**: Zips the XCFrameworks
 6. **Generate Checksums**: Creates SHA256 checksums for verification
+7. **Generate Package.swift**: Creates a Swift Package Manager template
 
 ## Debugging
 
@@ -136,6 +154,7 @@ The workflow produces:
 - `libturbojpeg.xcframework` - TurboJPEG library
 - `libjpeg-turbo-{version}-xcframework.zip` - Compressed archive of both XCFrameworks
 - `checksums.txt` - SHA256 checksums for verification
+- `Package.swift` - Ready-to-use Swift Package Manager manifest
 
 ### GitHub Releases
 
@@ -167,7 +186,17 @@ The workflow automatically creates a GitHub release with:
 4. Set "Embed" to "Do Not Embed" (since they're static libraries)
 
 ### Option 2: Swift Package Manager
-You can reference the XCFramework directly from GitHub releases. Create a `Package.swift` file:
+
+The build process automatically generates a ready-to-use `Package.swift` file with the correct repository URL and checksum.
+
+**Setup Steps:**
+
+1. Download `Package.swift` from the GitHub release
+2. Commit it to your repository root
+3. Tag with the version number (e.g., `3.0.4`)
+4. Push to GitHub
+
+**The generated Package.swift looks like:**
 
 ```swift
 // swift-tools-version:5.9

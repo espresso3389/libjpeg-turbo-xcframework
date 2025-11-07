@@ -50,6 +50,8 @@ jobs:
           libjpeg.xcframework
           libturbojpeg.xcframework
           libjpeg-turbo-*-xcframework.zip
+          Package.swift
+          checksums.txt
         retention-days: 30
     
     
@@ -76,7 +78,15 @@ jobs:
           ## 📥 Installation
 
           ### Swift Package Manager
-          Add to your `Package.swift`:
+
+          A ready-to-use `Package.swift` file is included in this release. To use it:
+
+          1. Download `Package.swift` from this release
+          2. Commit it to your repository root
+          3. Tag with version `${{ steps.build.outputs.version }}`
+          4. Push to GitHub
+
+          Consumers can then add to their `Package.swift`:
           ```swift
           .package(url: "https://github.com/${{ github.repository }}", from: "${{ steps.build.outputs.version }}")
           ```
@@ -102,6 +112,7 @@ jobs:
         files: |
           libjpeg-turbo-*-xcframework.zip
           checksums.txt
+          Package.swift
         draft: false
         prerelease: false
         fail_on_unmatched_files: true

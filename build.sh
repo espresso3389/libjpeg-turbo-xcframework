@@ -17,6 +17,7 @@ source "${SCRIPT_DIR}/scripts/build-platforms.sh"
 source "${SCRIPT_DIR}/scripts/create-universal.sh"
 source "${SCRIPT_DIR}/scripts/create-xcframework.sh"
 source "${SCRIPT_DIR}/scripts/create-checksums.sh"
+source "${SCRIPT_DIR}/scripts/create-package-swift.sh"
 
 # Parse command line arguments
 VERSION="${1:-latest}"
@@ -49,10 +50,15 @@ create_archive "$VERSION_CLEAN"
 print_step "Generating checksums"
 generate_checksums "$VERSION_CLEAN"
 
+# Step 7: Generate Package.swift
+print_step "Generating Package.swift"
+generate_package_swift "$VERSION_CLEAN"
+
 print_header "Build Complete!"
 echo "Output files:"
 echo "  - libjpeg.xcframework"
 echo "  - libturbojpeg.xcframework"
 echo "  - libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip"
 echo "  - checksums.txt"
+echo "  - Package.swift"
 echo ""

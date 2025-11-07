@@ -13,17 +13,24 @@ create_framework() {
 
     # Copy the library
     if [ "$platform" = "ios" ]; then
-        # For iOS, create a fat binary combining device and simulator
-        lipo -create \
-            "${INSTALL_DIR}/ios-arm64/lib/${lib_name}" \
-            "${INSTALL_DIR}/ios-simulator/lib/${lib_name}" \
-            -output "${framework_path}/${framework_name%.framework}"
+        # For iOS device, use the arm64 build
+        cp "${INSTALL_DIR}/ios-arm64/lib/${lib_name}" "${framework_path}/${framework_name%.framework}"
 
         # Copy headers from iOS arm64 build
         if [ "$header_pattern" = "all" ]; then
             cp "${INSTALL_DIR}/ios-arm64/include"/*.h "${framework_path}/Headers/"
         else
             cp "${INSTALL_DIR}/ios-arm64/include/${header_pattern}" "${framework_path}/Headers/"
+        fi
+    elif [ "$platform" = "ios-simulator" ]; then
+        # For iOS simulator, use the universal binary (arm64 + x86_64)
+        cp "${INSTALL_DIR}/ios-simulator/lib/${lib_name}" "${framework_path}/${framework_name%.framework}"
+
+        # Copy headers from iOS simulator build
+        if [ "$header_pattern" = "all" ]; then
+            cp "${INSTALL_DIR}/ios-simulator/include"/*.h "${framework_path}/Headers/"
+        else
+            cp "${INSTALL_DIR}/ios-simulator/include/${header_pattern}" "${framework_path}/Headers/"
         fi
     else
         # For macOS, use the universal binary
@@ -45,28 +52,32 @@ create_xcframeworks() {
     rm -rf "$FRAMEWORKS_DIR"
     mkdir -p "$FRAMEWORKS_DIR"
 
-    # Create libjpeg frameworks for iOS and macOS
+    # Create libjpeg frameworks for iOS, iOS Simulator, and macOS
     echo "Creating libjpeg frameworks..."
     create_framework "ios" "libjpeg.framework" "libjpeg.a" "all"
+    create_framework "ios-simulator" "libjpeg.framework" "libjpeg.a" "all"
     create_framework "macos" "libjpeg.framework" "libjpeg.a" "all"
 
     # Create libjpeg XCFramework
     echo "Creating libjpeg.xcframework..."
     xcodebuild -create-xcframework \
         -framework "${FRAMEWORKS_DIR}/ios/libjpeg.framework" \
+        -framework "${FRAMEWORKS_DIR}/ios-simulator/libjpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/macos/libjpeg.framework" \
         -output "${SCRIPT_DIR}/libjpeg.xcframework"
     print_success "Created libjpeg.xcframework"
 
-    # Create libturbojpeg frameworks for iOS and macOS
+    # Create libturbojpeg frameworks for iOS, iOS Simulator, and macOS
     echo "Creating libturbojpeg frameworks..."
     create_framework "ios" "libturbojpeg.framework" "libturbojpeg.a" "turbojpeg.h"
+    create_framework "ios-simulator" "libturbojpeg.framework" "libturbojpeg.a" "turbojpeg.h"
     create_framework "macos" "libturbojpeg.framework" "libturbojpeg.a" "turbojpeg.h"
 
     # Create libturbojpeg XCFramework
     echo "Creating libturbojpeg.xcframework..."
     xcodebuild -create-xcframework \
         -framework "${FRAMEWORKS_DIR}/ios/libturbojpeg.framework" \
+        -framework "${FRAMEWORKS_DIR}/ios-simulator/libturbojpeg.framework" \
         -framework "${FRAMEWORKS_DIR}/macos/libturbojpeg.framework" \
         -output "${SCRIPT_DIR}/libturbojpeg.xcframework"
     print_success "Created libturbojpeg.xcframework"

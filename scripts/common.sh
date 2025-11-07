@@ -2,6 +2,16 @@
 
 # Common utilities and variables
 
+# Determine script directory (works when sourced or executed)
+if [ -n "${BASH_SOURCE[0]}" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+
+# If SCRIPT_DIR is still not set, use current directory
+if [ -z "$SCRIPT_DIR" ]; then
+    SCRIPT_DIR="$(pwd)"
+fi
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'

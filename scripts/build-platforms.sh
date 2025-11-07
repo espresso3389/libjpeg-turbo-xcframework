@@ -31,6 +31,9 @@ build_platform() {
     # Add system name for iOS builds
     if [ "$platform" = "ios" ] || [ "$platform" = "ios-simulator" ]; then
         cmake_args+=("-DCMAKE_SYSTEM_NAME=iOS")
+        # Set CMAKE_SYSTEM_PROCESSOR to fix "string no output variable specified" error
+        # See: https://github.com/libjpeg-turbo/libjpeg-turbo/issues
+        cmake_args+=("-DCMAKE_SYSTEM_PROCESSOR=${arch}")
     fi
 
     # Add sysroot for simulator builds
@@ -43,9 +46,23 @@ build_platform() {
         cmake_args+=("-DCMAKE_C_FLAGS=${extra_flags}")
     fi
 
-    cmake "${cmake_args[@]}"
-    make -j$(get_cpu_count)
-    make install
+    if ! cmake "${cmake_args[@]}"; then
+        print_error "CMake configuration failed for ${build_name}"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
+
+    if ! make -j$(get_cpu_count); then
+        print_error "Build failed for ${build_name}"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
+
+    if ! make install; then
+        print_error "Installation failed for ${build_name}"
+        cd "$SCRIPT_DIR"
+        return 1
+    fi
 
     print_success "Built ${build_name}"
     cd "$SCRIPT_DIR"

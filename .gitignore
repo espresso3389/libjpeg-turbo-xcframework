@@ -11,3 +11,4 @@ libjpeg-turbo-source/
 *.zip
 *.tar.gz
 checksums.txt
+build.log
