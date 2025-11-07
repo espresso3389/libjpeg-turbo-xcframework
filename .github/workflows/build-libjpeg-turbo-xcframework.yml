@@ -7,6 +7,46 @@ on:
         description: 'libjpeg-turbo version (use "latest" for most recent release)'
         required: true
         default: 'latest'
+      jpeg8:
+        description: 'Build with libjpeg v8 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      jpeg7:
+        description: 'Build with libjpeg v7 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      enable_simd:
+        description: 'Enable SIMD optimizations'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_enc:
+        description: 'Enable arithmetic encoding'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_dec:
+        description: 'Enable arithmetic decoding'
+        required: false
+        type: boolean
+        default: true
+      enable_turbojpeg:
+        description: 'Enable TurboJPEG API library'
+        required: false
+        type: boolean
+        default: true
+      ios_target:
+        description: 'iOS deployment target (e.g., 12.0, 15.0)'
+        required: false
+        type: string
+        default: '12.0'
+      macos_target:
+        description: 'macOS deployment target (e.g., 11.0, 12.0)'
+        required: false
+        type: string
+        default: '11.0'
   push:
     branches: [ main ]
 
@@ -31,9 +71,51 @@ jobs:
       id: build
       run: |
         INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
-        ./build.sh "$INPUT_VERSION"
 
-        # Export version for later steps
+        # Build command with options
+        BUILD_CMD="./build.sh"
+
+        # Add build options based on inputs
+        if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg8"
+        fi
+
+        if [ "${{ github.event.inputs.jpeg7 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg7"
+        fi
+
+        if [ "${{ github.event.inputs.enable_simd }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-simd"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_enc }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-enc"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_dec }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-dec"
+        fi
+
+        if [ "${{ github.event.inputs.enable_turbojpeg }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-turbojpeg"
+        fi
+
+        # Add deployment targets if provided
+        if [ -n "${{ github.event.inputs.ios_target }}" ]; then
+          BUILD_CMD="$BUILD_CMD --ios-target ${{ github.event.inputs.ios_target }}"
+        fi
+
+        if [ -n "${{ github.event.inputs.macos_target }}" ]; then
+          BUILD_CMD="$BUILD_CMD --macos-target ${{ github.event.inputs.macos_target }}"
+        fi
+
+        # Add version
+        BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
+
+        echo "Build command: $BUILD_CMD"
+        eval $BUILD_CMD
+
+        # Export version and build config for later steps
         source scripts/common.sh
         source scripts/fetch-source.sh
         if [ "$INPUT_VERSION" = "latest" ]; then
@@ -43,6 +125,16 @@ jobs:
           VERSION="$INPUT_VERSION"
         fi
         echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+        # Export build configuration
+        echo "jpeg8=${{ github.event.inputs.jpeg8 }}" >> $GITHUB_OUTPUT
+        echo "jpeg7=${{ github.event.inputs.jpeg7 }}" >> $GITHUB_OUTPUT
+        echo "simd=${{ github.event.inputs.enable_simd }}" >> $GITHUB_OUTPUT
+        echo "arith_enc=${{ github.event.inputs.enable_arith_enc }}" >> $GITHUB_OUTPUT
+        echo "arith_dec=${{ github.event.inputs.enable_arith_dec }}" >> $GITHUB_OUTPUT
+        echo "turbojpeg=${{ github.event.inputs.enable_turbojpeg }}" >> $GITHUB_OUTPUT
+        echo "ios_target=${{ github.event.inputs.ios_target }}" >> $GITHUB_OUTPUT
+        echo "macos_target=${{ github.event.inputs.macos_target }}" >> $GITHUB_OUTPUT
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -75,8 +167,17 @@ jobs:
 
           ## 🎯 Supported Platforms
 
-          - **iOS**: arm64 (device) + arm64/x86_64 (simulator)
-          - **macOS**: arm64 (Apple Silicon) + x86_64 (Intel)
+          - **iOS**: arm64 (device) + arm64/x86_64 (simulator) - Deployment Target: ${{ steps.build.outputs.ios_target || '12.0' }}
+          - **macOS**: arm64 (Apple Silicon) + x86_64 (Intel) - Deployment Target: ${{ steps.build.outputs.macos_target || '11.0' }}
+
+          ## ⚙️ Build Configuration
+
+          - **JPEG8 Compatibility**: ${{ steps.build.outputs.jpeg8 == 'true' && '✅ Enabled' || '❌ Disabled' }}
+          - **JPEG7 Compatibility**: ${{ steps.build.outputs.jpeg7 == 'true' && '✅ Enabled' || '❌ Disabled' }}
+          - **SIMD Optimizations**: ${{ steps.build.outputs.simd == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **Arithmetic Encoding**: ${{ steps.build.outputs.arith_enc == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **Arithmetic Decoding**: ${{ steps.build.outputs.arith_dec == 'false' && '❌ Disabled' || '✅ Enabled' }}
+          - **TurboJPEG API**: ${{ steps.build.outputs.turbojpeg == 'false' && '❌ Disabled' || '✅ Enabled' }}
 
           ## 📥 Installation
 

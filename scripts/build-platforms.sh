@@ -28,6 +28,14 @@ build_platform() {
         "-DENABLE_STATIC=ON"
     )
 
+    # Add libjpeg-turbo specific build options
+    cmake_args+=("-DWITH_JPEG8=${WITH_JPEG8:-0}")
+    cmake_args+=("-DWITH_JPEG7=${WITH_JPEG7:-0}")
+    cmake_args+=("-DWITH_SIMD=${WITH_SIMD:-1}")
+    cmake_args+=("-DWITH_ARITH_ENC=${WITH_ARITH_ENC:-1}")
+    cmake_args+=("-DWITH_ARITH_DEC=${WITH_ARITH_DEC:-1}")
+    cmake_args+=("-DWITH_TURBOJPEG=${WITH_TURBOJPEG:-1}")
+
     # Add system name for iOS builds
     if [ "$platform" = "ios" ] || [ "$platform" = "ios-simulator" ]; then
         cmake_args+=("-DCMAKE_SYSTEM_NAME=iOS")
@@ -73,20 +81,24 @@ build_all_platforms() {
     rm -rf "$BUILD_DIR" "$INSTALL_DIR" "$FRAMEWORKS_DIR" "$OUTPUT_DIR"
     mkdir -p "$BUILD_DIR" "$INSTALL_DIR" "$OUTPUT_DIR"
 
+    # Use deployment target variables with defaults
+    local ios_target="${IOS_DEPLOYMENT_TARGET:-12.0}"
+    local macos_target="${MACOS_DEPLOYMENT_TARGET:-11.0}"
+
     # Build iOS arm64 (device)
-    build_platform "ios" "arm64" "12.0" "-fembed-bitcode" ""
+    build_platform "ios" "arm64" "$ios_target" "" ""
 
     # Build iOS Simulator arm64
-    build_platform "ios-simulator" "arm64" "12.0" "" "iphonesimulator"
+    build_platform "ios-simulator" "arm64" "$ios_target" "" "iphonesimulator"
 
     # Build iOS Simulator x86_64
-    build_platform "ios-simulator" "x86_64" "12.0" "" "iphonesimulator"
+    build_platform "ios-simulator" "x86_64" "$ios_target" "" "iphonesimulator"
 
     # Build macOS arm64
-    build_platform "macos" "arm64" "11.0" "" ""
+    build_platform "macos" "arm64" "$macos_target" "" ""
 
     # Build macOS x86_64
-    build_platform "macos" "x86_64" "11.0" "" ""
+    build_platform "macos" "x86_64" "$macos_target" "" ""
 
     print_success "All platforms built successfully"
 }
