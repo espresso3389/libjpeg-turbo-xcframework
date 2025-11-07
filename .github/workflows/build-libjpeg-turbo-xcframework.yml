@@ -51,6 +51,7 @@ jobs:
           build/output/libturbojpeg.xcframework
           build/output/libjpeg-turbo-*-xcframework.zip
           build/output/Package.swift
+          build/output/libjpeg-turbo.podspec
           build/output/checksums.txt
         retention-days: 30
     
@@ -113,6 +114,7 @@ jobs:
           build/output/libjpeg-turbo-*-xcframework.zip
           build/output/checksums.txt
           build/output/Package.swift
+          build/output/libjpeg-turbo.podspec
         draft: false
         prerelease: false
         fail_on_unmatched_files: true

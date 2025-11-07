@@ -18,6 +18,7 @@ source "${SCRIPT_DIR}/scripts/create-universal.sh"
 source "${SCRIPT_DIR}/scripts/create-xcframework.sh"
 source "${SCRIPT_DIR}/scripts/create-checksums.sh"
 source "${SCRIPT_DIR}/scripts/create-package-swift.sh"
+source "${SCRIPT_DIR}/scripts/create-podspec.sh"
 
 # Parse command line arguments
 VERSION="${1:-latest}"
@@ -54,6 +55,10 @@ generate_checksums "$VERSION_CLEAN"
 print_step "Generating Package.swift"
 generate_package_swift "$VERSION_CLEAN"
 
+# Step 8: Generate podspec
+print_step "Generating podspec"
+generate_podspec "$VERSION_CLEAN"
+
 print_header "Build Complete!"
 echo "Output files in build/output/:"
 echo "  - libjpeg.xcframework"
@@ -61,6 +66,7 @@ echo "  - libturbojpeg.xcframework"
 echo "  - libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip"
 echo "  - checksums.txt"
 echo "  - Package.swift"
+echo "  - libjpeg-turbo.podspec"
 echo ""
 echo "Full path: ${OUTPUT_DIR}"
 echo ""

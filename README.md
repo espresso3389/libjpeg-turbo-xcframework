@@ -63,6 +63,7 @@ After a successful build, all output files will be in `build/output/`:
 - `build/output/libjpeg-turbo-{version}-xcframework.zip` - Archive of both frameworks
 - `build/output/checksums.txt` - SHA256 checksums for verification
 - `build/output/Package.swift` - Ready-to-use Swift Package Manager manifest
+- `build/output/libjpeg-turbo.podspec` - Ready-to-use CocoaPods podspec
 
 ## Project Structure
 
@@ -77,7 +78,8 @@ After a successful build, all output files will be in `build/output/`:
 │   ├── create-universal.sh           # Create universal binaries with lipo
 │   ├── create-xcframework.sh         # Generate XCFrameworks
 │   ├── create-checksums.sh           # Generate SHA256 checksums
-│   └── create-package-swift.sh       # Generate Package.swift template
+│   ├── create-package-swift.sh       # Generate Package.swift template
+│   └── create-podspec.sh             # Generate CocoaPods podspec
 └── .github/workflows/
     └── build-libjpeg-turbo-xcframework.yml  # CI/CD workflow
 ```
@@ -100,6 +102,7 @@ The build script performs the following steps:
 5. **Create Archive**: Zips the XCFrameworks
 6. **Generate Checksums**: Creates SHA256 checksums for verification
 7. **Generate Package.swift**: Creates a Swift Package Manager template
+8. **Generate Podspec**: Creates a CocoaPods podspec file
 
 ## Debugging
 
@@ -159,6 +162,7 @@ The workflow produces:
 - `libjpeg-turbo-{version}-xcframework.zip` - Compressed archive of both XCFrameworks
 - `checksums.txt` - SHA256 checksums for verification
 - `Package.swift` - Ready-to-use Swift Package Manager manifest
+- `libjpeg-turbo.podspec` - Ready-to-use CocoaPods podspec
 
 ### GitHub Releases
 
@@ -242,23 +246,56 @@ let package = Package(
 **Note:** Swift Package Manager requires the XCFrameworks to be in a zip file, which is why we create one in the workflow.
 
 ### Option 3: CocoaPods
-Create or update your `Podspec`:
+
+The build process automatically generates a ready-to-use `libjpeg-turbo.podspec` file with the correct repository URL and checksum.
+
+**Setup Steps:**
+
+1. Download `libjpeg-turbo.podspec` from the GitHub release
+2. Commit it to your repository root
+3. Tag with the version number (e.g., `3.0.4`)
+4. Push to GitHub
+
+**The generated podspec looks like:**
 
 ```ruby
 Pod::Spec.new do |s|
   s.name             = 'libjpeg-turbo'
   s.version          = '3.0.4'
-  s.summary          = 'libjpeg-turbo XCFramework'
-  s.homepage         = 'https://github.com/yourusername/yourrepo'
-  s.license          = { :type => 'BSD', :file => 'LICENSE' }
-  s.author           = { 'Your Name' => 'your@email.com' }
-  s.source           = { :http => 'https://github.com/yourusername/yourrepo/releases/download/v3.0.4/libjpeg-turbo-3.0.4-xcframework.zip' }
+  s.summary          = 'libjpeg-turbo XCFramework for iOS and macOS'
+  s.description      = <<-DESC
+    libjpeg-turbo is a JPEG image codec that uses SIMD instructions to accelerate
+    baseline JPEG compression and decompression on x86, x86-64, Arm, PowerPC, and
+    MIPS systems. This pod provides prebuilt XCFrameworks for iOS and macOS.
+  DESC
+
+  s.homepage         = 'https://github.com/YOURUSERNAME/YOURREPO'
+  s.license          = { :type => 'BSD', :file => 'LICENSE.md' }
+  s.author           = { 'libjpeg-turbo' => 'information@libjpeg-turbo.org' }
+  s.source           = {
+    :http => 'https://github.com/YOURUSERNAME/YOURREPO/releases/download/3.0.4/libjpeg-turbo-3.0.4-xcframework.zip',
+    :sha256 => 'YOUR_SHA256_CHECKSUM_HERE'
+  }
 
   s.ios.deployment_target = '12.0'
   s.osx.deployment_target = '11.0'
 
   s.vendored_frameworks = 'libjpeg.xcframework', 'libturbojpeg.xcframework'
+
+  s.libraries = 'c++'
 end
+```
+
+**To publish to CocoaPods Trunk (optional):**
+
+```bash
+pod trunk push libjpeg-turbo.podspec
+```
+
+Consumers can then add to their `Podfile`:
+
+```ruby
+pod 'libjpeg-turbo', :podspec => 'https://raw.githubusercontent.com/YOURUSERNAME/YOURREPO/3.0.4/libjpeg-turbo.podspec'
 ```
 
 ## Usage in Code
