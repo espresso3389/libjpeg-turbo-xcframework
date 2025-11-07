@@ -42,6 +42,8 @@ WITH_ARITH_DEC=1
 WITH_TURBOJPEG=1
 IOS_DEPLOYMENT_TARGET="12.0"
 MACOS_DEPLOYMENT_TARGET="11.0"
+GENERATE_PODSPEC=0
+BASE_URL=""
 
 # =============================================================================
 # Common Utility Functions
@@ -424,94 +426,18 @@ generate_checksums() {
     cd "$PROJECT_ROOT"
 }
 
-generate_package_swift() {
-    local version="$1"
-
-    # Get repository URL from git
-    local repo_url=$(get_git_repo_url)
-
-    if [ -z "$repo_url" ]; then
-        print_warning "Could not detect GitHub repository URL from git remote"
-        print_warning "Skipping Package.swift generation"
-        echo "You can manually create Package.swift using the checksums.txt file"
-        return
-    fi
-
-    # Read checksum from checksums.txt
-    local checksum_file="${OUTPUT_DIR}/checksums.txt"
-    if [ ! -f "$checksum_file" ]; then
-        print_error "checksums.txt not found. Cannot generate Package.swift"
-        return 1
-    fi
-
-    # Extract just the checksum (first field)
-    local checksum=$(awk '{print $1}' "$checksum_file")
-
-    if [ -z "$checksum" ]; then
-        print_error "Could not read checksum from checksums.txt"
-        return 1
-    fi
-
-    local package_file="${OUTPUT_DIR}/Package.swift"
-
-    echo "Generating Package.swift..."
-    echo "  Repository: $repo_url"
-    echo "  Version: $version"
-    echo "  Checksum: $checksum"
-    echo ""
-
-    cat > "$package_file" << EOF
-// swift-tools-version:5.9
-import PackageDescription
-
-let package = Package(
-    name: "libjpeg-turbo",
-    platforms: [
-        .iOS(.v12),
-        .macOS(.v11)
-    ],
-    products: [
-        .library(
-            name: "libjpeg",
-            targets: ["libjpeg"]),
-        .library(
-            name: "libturbojpeg",
-            targets: ["libturbojpeg"])
-    ],
-    targets: [
-        .binaryTarget(
-            name: "libjpeg",
-            url: "${repo_url}/releases/download/${version}/libjpeg-turbo-${version}-xcframework.zip",
-            checksum: "${checksum}"
-        ),
-        .binaryTarget(
-            name: "libturbojpeg",
-            url: "${repo_url}/releases/download/${version}/libjpeg-turbo-${version}-xcframework.zip",
-            checksum: "${checksum}"
-        )
-    ]
-)
-EOF
-
-    print_success "Generated Package.swift"
-    echo ""
-    echo "Package.swift has been created with:"
-    echo "  - Repository: $repo_url"
-    echo "  - Version: $version"
-    echo "  - Checksum: $checksum"
-    echo ""
-    echo "You can now commit this file to your repository."
-    echo ""
-}
-
 generate_podspec() {
     local version="$1"
 
-    # Get repository URL from git
-    local repo_url=$(get_git_repo_url)
+    # Use provided base URL or get repository URL from git
+    local repo_url="$BASE_URL"
+    if [ -z "$repo_url" ]; then
+        repo_url=$(get_git_repo_url)
+    fi
 
     if [ -z "$repo_url" ]; then
         print_warning "Could not detect GitHub repository URL from git remote"
+        print_warning "Use --base-url to specify the repository URL"
         print_warning "Skipping podspec generation"
         echo "You can manually create podspec using the template in README.md"
         return
@@ -611,6 +537,9 @@ Options:
   --ios-target VERSION Set iOS deployment target (default: 12.0)
   --macos-target VERSION
                        Set macOS deployment target (default: 11.0)
+  --podspec            Generate .podspec for CocoaPods
+  --base-url URL       Base URL for release downloads (default: auto-detect from git)
+                       Example: https://github.com/username/repo
   -h, --help           Display this help message
 
 Examples:
@@ -622,6 +551,8 @@ Examples:
   $0 --jpeg8 --no-arith-enc 3.0.1 # Build v3.0.1 with JPEG8, no arithmetic encoding
   $0 --ios-target 15.0 3.0.1      # Build v3.0.1 with iOS 15.0 minimum target
   $0 --macos-target 12.0 latest   # Build latest with macOS 12.0 minimum target
+  $0 --podspec latest             # Build latest and generate .podspec
+  $0 --podspec --base-url https://github.com/user/repo latest  # Custom base URL
 
 Build Options:
   JPEG8:        Emulate libjpeg v8 API/ABI (incompatible with v6b)
@@ -688,6 +619,18 @@ while [[ $# -gt 0 ]]; do
             MACOS_DEPLOYMENT_TARGET="$2"
             shift 2
             ;;
+        --podspec)
+            GENERATE_PODSPEC=1
+            shift
+            ;;
+        --base-url)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --base-url requires a URL argument"
+                exit 1
+            fi
+            BASE_URL="$2"
+            shift 2
+            ;;
         -*)
             echo "Unknown option: $1"
             echo "Use --help for usage information"
@@ -738,13 +681,11 @@ create_archive "$VERSION_CLEAN"
 print_step "Generating checksums"
 generate_checksums "$VERSION_CLEAN"
 
-# Step 7: Generate Package.swift
-print_step "Generating Package.swift"
-generate_package_swift "$VERSION_CLEAN"
-
-# Step 8: Generate podspec
-print_step "Generating podspec"
-generate_podspec "$VERSION_CLEAN"
+# Step 7: Generate podspec (if requested)
+if [ "$GENERATE_PODSPEC" -eq 1 ]; then
+    print_step "Generating podspec"
+    generate_podspec "$VERSION_CLEAN"
+fi
 
 print_header "Build Complete!"
 echo "Output files in build/output/:"
@@ -752,8 +693,9 @@ echo "  - libjpeg.xcframework"
 echo "  - libturbojpeg.xcframework"
 echo "  - libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip"
 echo "  - checksums.txt"
-echo "  - Package.swift"
-echo "  - libjpeg-turbo.podspec"
+if [ "$GENERATE_PODSPEC" -eq 1 ]; then
+    echo "  - libjpeg-turbo.podspec"
+fi
 echo ""
 echo "Full path: ${OUTPUT_DIR}"
 echo ""

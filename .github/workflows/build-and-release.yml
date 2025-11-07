@@ -117,6 +117,13 @@ jobs:
           BUILD_CMD="$BUILD_CMD --macos-target ${{ github.event.inputs.macos_target }}"
         fi
 
+        # Always generate podspec for releases
+        BUILD_CMD="$BUILD_CMD --podspec"
+
+        # Add base URL for package manager files
+        REPO_URL="https://github.com/${{ github.repository }}"
+        BUILD_CMD="$BUILD_CMD --base-url $REPO_URL"
+
         # Add version
         BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
 
@@ -511,6 +518,12 @@ jobs:
         VERSION="${{ steps.prepare.outputs.version }}"
         VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
 
+        # Extract checksum for Darwin XCFramework zip
+        DARWIN_CHECKSUM=""
+        if [ -f "artifacts/libjpeg-turbo-darwin-${VERSION}/checksums.txt" ]; then
+          DARWIN_CHECKSUM=$(awk '{print $1}' "artifacts/libjpeg-turbo-darwin-${VERSION}/checksums.txt")
+        fi
+
         # Format boolean values
         format_bool() {
           if [ "$1" = "true" ]; then
@@ -530,8 +543,9 @@ jobs:
         ### Darwin (macOS/iOS)
         - **XCFramework** for iOS (arm64, arm64-simulator, x86_64-simulator)
         - **XCFramework** for macOS (arm64, x86_64)
-        - Compatible with Xcode projects and CocoaPods
+        - Compatible with Xcode projects, Swift Package Manager, and CocoaPods
         - **Deployment Targets**: iOS ${{ github.event.inputs.ios_target }}+, macOS ${{ github.event.inputs.macos_target }}+
+        - Includes \`libjpeg-turbo.podspec\` for CocoaPods
 
         ### Windows
         - **x86** - 32-bit x86 binaries
@@ -555,29 +569,46 @@ jobs:
         - **Arithmetic Decoding**: $(format_bool "${{ github.event.inputs.enable_arith_dec }}")
         - **TurboJPEG API**: $(format_bool "${{ github.event.inputs.enable_turbojpeg }}")
 
-        ## 📥 Installation
-
-        ### Darwin (macOS/iOS)
-
-        Download \`libjpeg-turbo-darwin-${VERSION_CLEAN}.tar.gz\` and extract the XCFrameworks to your project.
-
-        ### Windows
-
-        Download \`libjpeg-turbo-windows-${VERSION_CLEAN}.zip\` and extract to your project directory.
-
-        ### Linux
-
-        Download \`libjpeg-turbo-linux-${VERSION_CLEAN}.tar.gz\` and extract:
-        \`\`\`bash
-        tar -xzf libjpeg-turbo-linux-${VERSION_CLEAN}.tar.gz
-        sudo cp x64/lib/* /usr/local/lib/
-        sudo cp x64/include/* /usr/local/include/
-        sudo ldconfig
-        \`\`\`
-
         ## 🔐 Checksums
 
-        See \`checksums.txt\` for SHA256 verification.
+        See \`checksums.txt\` for SHA256 verification of all release artifacts.
+
+        ## 📦 Package Manager Integration
+
+        ### Swift Package Manager
+        Add a binary target to your \`Package.swift\`:
+        \`\`\`swift
+        targets: [
+            .executableTarget(
+                name: "YourApp",
+                dependencies: [
+                    .target(name: "libturbojpeg")  // Or "libjpeg"
+                ]),
+
+            // Binary targets for libjpeg-turbo
+            .binaryTarget(
+                name: "libjpeg",
+                url: "https://github.com/${{ github.repository }}/releases/download/${VERSION}/libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip",
+                checksum: "${DARWIN_CHECKSUM}"
+            ),
+            .binaryTarget(
+                name: "libturbojpeg",
+                url: "https://github.com/${{ github.repository }}/releases/download/${VERSION}/libjpeg-turbo-${VERSION_CLEAN}-xcframework.zip",
+                checksum: "${DARWIN_CHECKSUM}"
+            )
+        ]
+        \`\`\`
+
+        ### CocoaPods
+        Add to your \`Podfile\`:
+        \`\`\`ruby
+        pod 'libjpeg-turbo', :podspec => 'https://github.com/${{ github.repository }}/releases/download/${VERSION_CLEAN}/libjpeg-turbo.podspec'
+        \`\`\`
+
+        Or if published to CocoaPods trunk:
+        \`\`\`ruby
+        pod 'libjpeg-turbo', '~> ${VERSION_CLEAN}'
+        \`\`\`
 
         ## 📖 Documentation
 
