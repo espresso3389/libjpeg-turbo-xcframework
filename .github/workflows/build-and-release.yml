@@ -68,7 +68,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        brew install cmake nasm jq
+        brew install nasm
 
     - name: Make build script executable
       run: chmod +x scripts/build-darwin.sh
