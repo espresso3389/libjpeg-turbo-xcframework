@@ -136,7 +136,7 @@ build_platform "macos" "arm64" "11.0" "" ""
 
 ### Prerequisites
 
-The workflow uses `GITHUB_TOKEN` to create releases, which is automatically provided by GitHub Actions. No additional configuration is needed - the token has the necessary permissions by default.
+The workflow uses `GITHUB_TOKEN` to create releases. The workflow includes the required `permissions: contents: write` setting to allow the token to create releases and upload assets. No additional secrets or configuration is needed.
 
 ### Triggers
 
