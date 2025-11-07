@@ -605,11 +605,6 @@ jobs:
         pod 'libjpeg-turbo', :podspec => 'https://github.com/${{ github.repository }}/releases/download/${VERSION_CLEAN}/libjpeg-turbo.podspec'
         \`\`\`
 
-        Or if published to CocoaPods trunk:
-        \`\`\`ruby
-        pod 'libjpeg-turbo', '~> ${VERSION_CLEAN}'
-        \`\`\`
-
         ## 📖 Documentation
 
         - [libjpeg-turbo Official Docs](https://libjpeg-turbo.org/)
