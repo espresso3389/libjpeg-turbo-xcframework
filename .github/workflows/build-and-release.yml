@@ -1,0 +1,533 @@
+name: Build and Release libjpeg-turbo
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'libjpeg-turbo version (use "latest" for most recent release)'
+        required: true
+        default: 'latest'
+      jpeg8:
+        description: 'Build with libjpeg v8 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      jpeg7:
+        description: 'Build with libjpeg v7 API/ABI compatibility'
+        required: false
+        type: boolean
+        default: false
+      enable_simd:
+        description: 'Enable SIMD optimizations'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_enc:
+        description: 'Enable arithmetic encoding'
+        required: false
+        type: boolean
+        default: true
+      enable_arith_dec:
+        description: 'Enable arithmetic decoding'
+        required: false
+        type: boolean
+        default: true
+      enable_turbojpeg:
+        description: 'Enable TurboJPEG API library'
+        required: false
+        type: boolean
+        default: true
+      ios_target:
+        description: 'iOS deployment target (e.g., 12.0, 15.0)'
+        required: false
+        type: string
+        default: '12.0'
+      macos_target:
+        description: 'macOS deployment target (e.g., 11.0, 12.0)'
+        required: false
+        type: string
+        default: '11.0'
+      create_release:
+        description: 'Create GitHub release'
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  # Build for Darwin (macOS/iOS)
+  build-darwin:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.build.outputs.version }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        brew install cmake nasm jq
+
+    - name: Make build script executable
+      run: chmod +x scripts/build-darwin.sh
+
+    - name: Build XCFrameworks
+      id: build
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
+
+        # Build command with options
+        BUILD_CMD="./scripts/build-darwin.sh"
+
+        # Add build options based on inputs
+        if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg8"
+        fi
+
+        if [ "${{ github.event.inputs.jpeg7 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg7"
+        fi
+
+        if [ "${{ github.event.inputs.enable_simd }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-simd"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_enc }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-enc"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_dec }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-dec"
+        fi
+
+        if [ "${{ github.event.inputs.enable_turbojpeg }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-turbojpeg"
+        fi
+
+        # Add deployment targets if provided
+        if [ -n "${{ github.event.inputs.ios_target }}" ]; then
+          BUILD_CMD="$BUILD_CMD --ios-target ${{ github.event.inputs.ios_target }}"
+        fi
+
+        if [ -n "${{ github.event.inputs.macos_target }}" ]; then
+          BUILD_CMD="$BUILD_CMD --macos-target ${{ github.event.inputs.macos_target }}"
+        fi
+
+        # Add version
+        BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
+
+        echo "Build command: $BUILD_CMD"
+        eval $BUILD_CMD
+
+        # Export version for later steps
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          LATEST_VERSION=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest | jq -r .tag_name)
+          VERSION="$LATEST_VERSION"
+        else
+          VERSION="$INPUT_VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Upload Darwin artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-darwin-${{ steps.build.outputs.version }}
+        path: build/output/
+        retention-days: 7
+
+  # Build for Windows x64
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        choco install cmake -y
+        choco install nasm -y
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build Windows binaries
+      shell: cmd
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        REM Build command with options
+        set BUILD_CMD=build.bat
+
+        REM Add build options based on inputs
+        if "${{ github.event.inputs.jpeg8 }}"=="true" (
+          set BUILD_CMD=%BUILD_CMD% --jpeg8
+        )
+
+        if "${{ github.event.inputs.jpeg7 }}"=="true" (
+          set BUILD_CMD=%BUILD_CMD% --jpeg7
+        )
+
+        if "${{ github.event.inputs.enable_simd }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-simd
+        )
+
+        if "${{ github.event.inputs.enable_arith_enc }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-arith-enc
+        )
+
+        if "${{ github.event.inputs.enable_arith_dec }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-arith-dec
+        )
+
+        if "${{ github.event.inputs.enable_turbojpeg }}"=="false" (
+          set BUILD_CMD=%BUILD_CMD% --no-turbojpeg
+        )
+
+        REM Add version
+        set BUILD_CMD=%BUILD_CMD% ${{ github.event.inputs.version || 'latest' }}
+
+        echo Build command: %BUILD_CMD%
+        call %BUILD_CMD%
+
+    - name: Get version
+      id: version
+      shell: pwsh
+      run: |
+        $CMakeFile = "build/source/CMakeLists.txt"
+        $Content = Get-Content $CMakeFile -Raw
+        if ($Content -match "set\(VERSION\s+([0-9.]+)") {
+          $Version = $Matches[1]
+          echo "version=$Version" >> $env:GITHUB_OUTPUT
+        } else {
+          echo "version=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-windows-${{ steps.version.outputs.version }}
+        path: build/output/
+        retention-days: 7
+
+  # Build for Linux x64
+  build-linux-x64:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake nasm gcc g++ jq
+
+    - name: Make build script executable
+      run: chmod +x scripts/build-linux.sh
+
+    - name: Build x64 binaries
+      id: build
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
+
+        # Build command with options
+        BUILD_CMD="./scripts/build-linux.sh --arch x64"
+
+        # Add build options based on inputs
+        if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg8"
+        fi
+
+        if [ "${{ github.event.inputs.jpeg7 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg7"
+        fi
+
+        if [ "${{ github.event.inputs.enable_simd }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-simd"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_enc }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-enc"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_dec }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-dec"
+        fi
+
+        if [ "${{ github.event.inputs.enable_turbojpeg }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-turbojpeg"
+        fi
+
+        # Add version
+        BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
+
+        echo "Build command: $BUILD_CMD"
+        eval $BUILD_CMD
+
+        # Export version for later steps
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          LATEST_VERSION=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest | jq -r .tag_name)
+          VERSION="$LATEST_VERSION"
+        else
+          VERSION="$INPUT_VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Upload x64 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-linux-x64-${{ steps.build.outputs.version }}
+        path: build/output/
+        retention-days: 7
+
+  # Build for Linux ARM64
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm64
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake gcc g++ jq
+
+    - name: Make build script executable
+      run: chmod +x scripts/build-linux.sh
+
+    - name: Build ARM64 binaries
+      id: build
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        INPUT_VERSION="${{ github.event.inputs.version || 'latest' }}"
+
+        # Build command with options
+        BUILD_CMD="./scripts/build-linux.sh --arch armv8"
+
+        # Add build options based on inputs
+        if [ "${{ github.event.inputs.jpeg8 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg8"
+        fi
+
+        if [ "${{ github.event.inputs.jpeg7 }}" = "true" ]; then
+          BUILD_CMD="$BUILD_CMD --jpeg7"
+        fi
+
+        if [ "${{ github.event.inputs.enable_simd }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-simd"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_enc }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-enc"
+        fi
+
+        if [ "${{ github.event.inputs.enable_arith_dec }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-arith-dec"
+        fi
+
+        if [ "${{ github.event.inputs.enable_turbojpeg }}" = "false" ]; then
+          BUILD_CMD="$BUILD_CMD --no-turbojpeg"
+        fi
+
+        # Add version
+        BUILD_CMD="$BUILD_CMD $INPUT_VERSION"
+
+        echo "Build command: $BUILD_CMD"
+        eval $BUILD_CMD
+
+        # Export version for later steps
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          LATEST_VERSION=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest | jq -r .tag_name)
+          VERSION="$LATEST_VERSION"
+        else
+          VERSION="$INPUT_VERSION"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Upload ARM64 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libjpeg-turbo-linux-arm64-${{ steps.build.outputs.version }}
+        path: build/output/
+        retention-days: 7
+
+  # Create release with all artifacts
+  release:
+    needs: [build-darwin, build-windows, build-linux-x64, build-linux-arm64]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: ${{ github.event.inputs.create_release == 'true' }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts/
+
+    - name: Prepare release assets
+      id: prepare
+      run: |
+        VERSION="${{ needs.build-darwin.outputs.version }}"
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+        mkdir -p release
+
+        # Package Darwin artifacts
+        if [ -d "artifacts/libjpeg-turbo-darwin-$VERSION" ]; then
+          cd "artifacts/libjpeg-turbo-darwin-$VERSION"
+          tar -czf ../../release/libjpeg-turbo-darwin-$VERSION.tar.gz *
+          cd ../..
+        fi
+
+        # Package Windows artifacts
+        if [ -d "artifacts/libjpeg-turbo-windows-$VERSION" ]; then
+          cd "artifacts/libjpeg-turbo-windows-$VERSION"
+          zip -r ../../release/libjpeg-turbo-windows-$VERSION.zip *
+          cd ../..
+        fi
+
+        # Combine Linux architectures
+        mkdir -p linux-combined
+        if [ -d "artifacts/libjpeg-turbo-linux-x64-$VERSION" ]; then
+          mkdir -p linux-combined/x64
+          cp -r "artifacts/libjpeg-turbo-linux-x64-$VERSION"/* linux-combined/x64/
+        fi
+        if [ -d "artifacts/libjpeg-turbo-linux-arm64-$VERSION" ]; then
+          mkdir -p linux-combined/arm64
+          cp -r "artifacts/libjpeg-turbo-linux-arm64-$VERSION"/* linux-combined/arm64/
+        fi
+        cd linux-combined
+        tar -czf ../release/libjpeg-turbo-linux-$VERSION.tar.gz *
+        cd ..
+
+        # Create checksums
+        cd release
+        sha256sum * > checksums.txt
+        cd ..
+
+    - name: Generate release notes
+      id: notes
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        VERSION="${{ steps.prepare.outputs.version }}"
+        VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
+
+        # Format boolean values
+        format_bool() {
+          if [ "$1" = "true" ]; then
+            echo "✅ Enabled"
+          else
+            echo "❌ Disabled"
+          fi
+        }
+
+        cat > release-notes.md <<EOF
+        # libjpeg-turbo ${VERSION_CLEAN} - Multi-Platform Release
+
+        Pre-built libraries for Darwin (macOS/iOS), Windows, and Linux.
+
+        ## 📦 What's Included
+
+        ### Darwin (macOS/iOS)
+        - **XCFramework** for iOS (arm64, arm64-simulator, x86_64-simulator)
+        - **XCFramework** for macOS (arm64, x86_64)
+        - Compatible with Xcode projects and CocoaPods
+        - **Deployment Targets**: iOS ${{ github.event.inputs.ios_target }}+, macOS ${{ github.event.inputs.macos_target }}+
+
+        ### Windows
+        - **x86** - 32-bit x86 binaries
+        - **x64** - 64-bit x86-64 binaries
+        - **arm64** - ARM64 binaries
+        - Includes both shared (.dll) and static (.lib) libraries
+
+        ### Linux
+        - **x64** - 64-bit x86-64 binaries
+        - **arm64** - ARM64/AArch64 binaries
+        - Includes both shared (.so) and static (.a) libraries
+
+        ## ⚙️ Build Configuration
+
+        All platforms built with the following configuration:
+
+        - **JPEG8 Compatibility**: $(format_bool "${{ github.event.inputs.jpeg8 }}")
+        - **JPEG7 Compatibility**: $(format_bool "${{ github.event.inputs.jpeg7 }}")
+        - **SIMD Optimizations**: $(format_bool "${{ github.event.inputs.enable_simd }}")
+        - **Arithmetic Encoding**: $(format_bool "${{ github.event.inputs.enable_arith_enc }}")
+        - **Arithmetic Decoding**: $(format_bool "${{ github.event.inputs.enable_arith_dec }}")
+        - **TurboJPEG API**: $(format_bool "${{ github.event.inputs.enable_turbojpeg }}")
+
+        ## 📥 Installation
+
+        ### Darwin (macOS/iOS)
+
+        Download \`libjpeg-turbo-darwin-${VERSION_CLEAN}.tar.gz\` and extract the XCFrameworks to your project.
+
+        ### Windows
+
+        Download \`libjpeg-turbo-windows-${VERSION_CLEAN}.zip\` and extract to your project directory.
+
+        ### Linux
+
+        Download \`libjpeg-turbo-linux-${VERSION_CLEAN}.tar.gz\` and extract:
+        \`\`\`bash
+        tar -xzf libjpeg-turbo-linux-${VERSION_CLEAN}.tar.gz
+        sudo cp x64/lib/* /usr/local/lib/
+        sudo cp x64/include/* /usr/local/include/
+        sudo ldconfig
+        \`\`\`
+
+        ## 🔐 Checksums
+
+        See \`checksums.txt\` for SHA256 verification.
+
+        ## 📖 Documentation
+
+        - [libjpeg-turbo Official Docs](https://libjpeg-turbo.org/)
+        - [Original Release Notes](https://github.com/libjpeg-turbo/libjpeg-turbo/releases/tag/${VERSION_CLEAN})
+        - [Build Instructions](https://github.com/${{ github.repository }})
+
+        ---
+
+        Built with ❤️ using GitHub Actions
+        EOF
+
+        echo "notes<<EOF" >> $GITHUB_OUTPUT
+        cat release-notes.md >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.prepare.outputs.version }}
+        name: libjpeg-turbo ${{ steps.prepare.outputs.version }}
+        body: ${{ steps.notes.outputs.notes }}
+        files: |
+          release/*
+        draft: false
+        prerelease: false
+        fail_on_unmatched_files: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

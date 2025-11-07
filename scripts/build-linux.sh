@@ -1,91 +1,144 @@
 #!/bin/bash
 
-# Script to build libjpeg-turbo for Linux platforms and architectures
+# Unified build script for libjpeg-turbo Linux
+# This script is fully self-contained with all utilities and functions included
 
-build_linux_platform() {
-    local arch="$1"
-    local cross_compile="$2"
-    local cmake_toolchain="$3"
+set -e  # Exit on error
+set -u  # Exit on undefined variable
 
-    local build_name="linux-${arch}"
-    local build_path="${BUILD_DIR}/${build_name}"
-    local install_path="${INSTALL_DIR}/${build_name}"
+# =============================================================================
+# Setup and Global Variables
+# =============================================================================
 
-    echo "Building for Linux ${arch}..."
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-    mkdir -p "$build_path"
-    cd "$build_path"
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-    local cmake_args=(
-        "$SOURCE_DIR"
-        "-DCMAKE_INSTALL_PREFIX=${install_path}"
-        "-DCMAKE_BUILD_TYPE=Release"
-        "-DENABLE_SHARED=ON"
-        "-DENABLE_STATIC=ON"
-    )
+# Directories - all build artifacts go inside build/
+BUILD_ROOT="${PROJECT_ROOT}/build"
+SOURCE_DIR="${BUILD_ROOT}/source"
+BUILD_DIR="${BUILD_ROOT}/cmake-build"
+INSTALL_DIR="${BUILD_ROOT}/install"
+OUTPUT_DIR="${BUILD_ROOT}/output"
 
-    # Add libjpeg-turbo specific build options
-    cmake_args+=("-DWITH_JPEG8=${WITH_JPEG8:-0}")
-    cmake_args+=("-DWITH_JPEG7=${WITH_JPEG7:-0}")
-    cmake_args+=("-DWITH_SIMD=${WITH_SIMD:-1}")
-    cmake_args+=("-DWITH_ARITH_ENC=${WITH_ARITH_ENC:-1}")
-    cmake_args+=("-DWITH_ARITH_DEC=${WITH_ARITH_DEC:-1}")
-    cmake_args+=("-DWITH_TURBOJPEG=${WITH_TURBOJPEG:-1}")
+# Global variables
+VERSION_CLEAN=""
 
-    # Add cross-compilation settings if specified
-    if [ -n "$cmake_toolchain" ]; then
-        cmake_args+=("-DCMAKE_TOOLCHAIN_FILE=${cmake_toolchain}")
-    elif [ -n "$cross_compile" ]; then
-        cmake_args+=("-DCMAKE_C_COMPILER=${cross_compile}gcc")
-        cmake_args+=("-DCMAKE_CXX_COMPILER=${cross_compile}g++")
-        cmake_args+=("-DCMAKE_SYSTEM_NAME=Linux")
+# Default build options
+VERSION="latest"
+WITH_JPEG8=0
+WITH_JPEG7=0
+WITH_SIMD=1
+WITH_ARITH_ENC=1
+WITH_ARITH_DEC=1
+WITH_TURBOJPEG=1
+ARCH="auto"  # auto, x86, x64, armv7, armv8
 
-        # Set system processor for different architectures
-        case "$arch" in
-            x86)
-                cmake_args+=("-DCMAKE_SYSTEM_PROCESSOR=i686")
-                cmake_args+=("-DCMAKE_C_FLAGS=-m32")
-                cmake_args+=("-DCMAKE_CXX_FLAGS=-m32")
-                ;;
-            x64)
-                cmake_args+=("-DCMAKE_SYSTEM_PROCESSOR=x86_64")
-                ;;
-            armv7)
-                cmake_args+=("-DCMAKE_SYSTEM_PROCESSOR=armv7")
-                ;;
-            armv8|arm64)
-                cmake_args+=("-DCMAKE_SYSTEM_PROCESSOR=aarch64")
-                ;;
-        esac
-    else
-        # Native build - set appropriate flags for x86 if needed
-        if [ "$arch" = "x86" ]; then
-            cmake_args+=("-DCMAKE_C_FLAGS=-m32")
-            cmake_args+=("-DCMAKE_CXX_FLAGS=-m32")
-        fi
-    fi
+# =============================================================================
+# Common Utility Functions
+# =============================================================================
 
-    if ! cmake "${cmake_args[@]}"; then
-        print_error "CMake configuration failed for ${build_name}"
-        cd "$SCRIPT_DIR"
-        return 1
-    fi
-
-    if ! make -j$(get_cpu_count); then
-        print_error "Build failed for ${build_name}"
-        cd "$SCRIPT_DIR"
-        return 1
-    fi
-
-    if ! make install; then
-        print_error "Installation failed for ${build_name}"
-        cd "$SCRIPT_DIR"
-        return 1
-    fi
-
-    print_success "Built ${build_name}"
-    cd "$SCRIPT_DIR"
+# Print a header
+print_header() {
+    echo ""
+    echo -e "${BLUE}========================================${NC}"
+    echo -e "${BLUE}$1${NC}"
+    echo -e "${BLUE}========================================${NC}"
+    echo ""
 }
+
+# Print a step
+print_step() {
+    echo ""
+    echo -e "${GREEN}▶ $1${NC}"
+    echo ""
+}
+
+# Print an error
+print_error() {
+    echo -e "${RED}✗ Error: $1${NC}" >&2
+}
+
+# Print a warning
+print_warning() {
+    echo -e "${YELLOW}⚠ Warning: $1${NC}"
+}
+
+# Print success
+print_success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+# Get number of CPU cores
+get_cpu_count() {
+    nproc 2>/dev/null || echo "4"
+}
+
+# =============================================================================
+# Source Fetching Functions
+# =============================================================================
+
+fetch_libjpeg_turbo_source() {
+    local input_version="$1"
+
+    if [ "$input_version" = "latest" ]; then
+        echo "Fetching latest release version..."
+
+        # Prepare curl command with optional authentication
+        local curl_cmd="curl -s"
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            curl_cmd="$curl_cmd -H \"Authorization: Bearer $GITHUB_TOKEN\""
+        fi
+
+        LATEST_VERSION=$(eval "$curl_cmd https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest" | jq -r .tag_name)
+        if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
+            print_error "Failed to fetch latest version"
+            exit 1
+        fi
+        echo "Latest version: $LATEST_VERSION"
+        VERSION="$LATEST_VERSION"
+    else
+        echo "Using specified version: $input_version"
+        VERSION="$input_version"
+    fi
+
+    # Remove 'v' prefix if present
+    VERSION_CLEAN=$(echo "$VERSION" | sed 's/^v//')
+    export VERSION_CLEAN
+
+    echo "Downloading libjpeg-turbo version: $VERSION"
+
+    # Create build root directory if it doesn't exist
+    mkdir -p "$BUILD_ROOT"
+
+    cd "$BUILD_ROOT"
+    curl -L "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/${VERSION}.tar.gz" -o libjpeg-turbo.tar.gz
+
+    # Remove old source if exists
+    if [ -d "$SOURCE_DIR" ]; then
+        rm -rf "$SOURCE_DIR"
+    fi
+
+    echo "Extracting source..."
+    tar -xzf libjpeg-turbo.tar.gz
+    mv "libjpeg-turbo-${VERSION_CLEAN}" source
+    rm libjpeg-turbo.tar.gz
+
+    cd "$PROJECT_ROOT"
+
+    print_success "Source downloaded and extracted to $SOURCE_DIR"
+}
+
+# =============================================================================
+# Build Functions
+# =============================================================================
 
 detect_native_arch() {
     local arch=$(uname -m)
@@ -108,177 +161,134 @@ detect_native_arch() {
     esac
 }
 
-build_all_linux_platforms() {
+build_linux_platform() {
+    local arch="$1"
+
+    local build_name="linux-${arch}"
+    local build_path="${BUILD_DIR}/${build_name}"
+    local install_path="${INSTALL_DIR}/${build_name}"
+
+    echo "Building for Linux ${arch}..."
+
+    mkdir -p "$build_path"
+    cd "$build_path"
+
+    local cmake_args=(
+        "$SOURCE_DIR"
+        "-DCMAKE_INSTALL_PREFIX=${install_path}"
+        "-DCMAKE_BUILD_TYPE=Release"
+        "-DENABLE_SHARED=ON"
+        "-DENABLE_STATIC=ON"
+    )
+
+    # Add libjpeg-turbo specific build options
+    cmake_args+=("-DWITH_JPEG8=${WITH_JPEG8}")
+    cmake_args+=("-DWITH_JPEG7=${WITH_JPEG7}")
+    cmake_args+=("-DWITH_SIMD=${WITH_SIMD}")
+    cmake_args+=("-DWITH_ARITH_ENC=${WITH_ARITH_ENC}")
+    cmake_args+=("-DWITH_ARITH_DEC=${WITH_ARITH_DEC}")
+    cmake_args+=("-DWITH_TURBOJPEG=${WITH_TURBOJPEG}")
+
+    # Set architecture-specific flags
+    case "$arch" in
+        x86)
+            cmake_args+=("-DCMAKE_C_FLAGS=-m32")
+            cmake_args+=("-DCMAKE_CXX_FLAGS=-m32")
+            ;;
+    esac
+
+    if ! cmake "${cmake_args[@]}"; then
+        print_error "CMake configuration failed for ${build_name}"
+        cd "$PROJECT_ROOT"
+        return 1
+    fi
+
+    if ! make -j$(get_cpu_count); then
+        print_error "Build failed for ${build_name}"
+        cd "$PROJECT_ROOT"
+        return 1
+    fi
+
+    if ! make install; then
+        print_error "Installation failed for ${build_name}"
+        cd "$PROJECT_ROOT"
+        return 1
+    fi
+
+    print_success "Built ${build_name}"
+    cd "$PROJECT_ROOT"
+}
+
+build_for_architecture() {
+    local target_arch="$1"
+
     # Clean build, install, and output directories (but preserve source)
     rm -rf "$BUILD_DIR" "$INSTALL_DIR" "$OUTPUT_DIR"
     mkdir -p "$BUILD_DIR" "$INSTALL_DIR" "$OUTPUT_DIR"
 
-    local native_arch=$(detect_native_arch)
-    echo "Detected native architecture: $native_arch"
-    echo ""
+    build_linux_platform "$target_arch"
 
-    # Determine which architectures to build
-    # If cross-compilation tools are available, build for all architectures
-    # Otherwise, only build for native architecture
-
-    local build_x86=false
-    local build_x64=false
-    local build_armv7=false
-    local build_armv8=false
-
-    # Check for cross-compilation tools
-    local has_multilib=false
-    local has_arm_cross=false
-
-    if [ "$native_arch" = "x64" ]; then
-        # Check for multilib support (x86 on x64)
-        if command -v gcc &> /dev/null && gcc -m32 -x c /dev/null -o /dev/null 2>/dev/null; then
-            has_multilib=true
-        fi
-    fi
-
-    # Check for ARM cross-compilers
-    if command -v arm-linux-gnueabihf-gcc &> /dev/null; then
-        has_arm_cross=true
-    fi
-
-    if command -v aarch64-linux-gnu-gcc &> /dev/null; then
-        has_arm_cross=true
-    fi
-
-    # Determine what to build
-    case "$native_arch" in
-        x64)
-            build_x64=true
-            if [ "$has_multilib" = true ]; then
-                build_x86=true
-                echo "Multilib support detected, will build x86 in addition to x64"
-            fi
-            ;;
-        x86)
-            build_x86=true
-            ;;
-        armv8)
-            build_armv8=true
-            ;;
-        armv7)
-            build_armv7=true
-            ;;
-    esac
-
-    if [ "$has_arm_cross" = true ]; then
-        echo "ARM cross-compilation tools detected"
-        if command -v arm-linux-gnueabihf-gcc &> /dev/null; then
-            build_armv7=true
-            echo "Will build armv7"
-        fi
-        if command -v aarch64-linux-gnu-gcc &> /dev/null; then
-            build_armv8=true
-            echo "Will build armv8"
-        fi
-    fi
-
-    echo ""
-
-    # Build for detected/available architectures
-    if [ "$build_x86" = true ]; then
-        build_linux_platform "x86" "" ""
-    else
-        print_warning "Skipping x86 build (not native and no cross-compilation available)"
-    fi
-
-    if [ "$build_x64" = true ]; then
-        build_linux_platform "x64" "" ""
-    else
-        print_warning "Skipping x64 build (not native and no cross-compilation available)"
-    fi
-
-    if [ "$build_armv7" = true ]; then
-        if command -v arm-linux-gnueabihf-gcc &> /dev/null; then
-            build_linux_platform "armv7" "arm-linux-gnueabihf-" ""
-        else
-            print_warning "Skipping armv7 build (not native and no cross-compiler available)"
-        fi
-    else
-        print_warning "Skipping armv7 build (not native and no cross-compilation available)"
-    fi
-
-    if [ "$build_armv8" = true ]; then
-        if [ "$native_arch" = "armv8" ]; then
-            build_linux_platform "armv8" "" ""
-        elif command -v aarch64-linux-gnu-gcc &> /dev/null; then
-            build_linux_platform "armv8" "aarch64-linux-gnu-" ""
-        else
-            print_warning "Skipping armv8 build (not native and no cross-compiler available)"
-        fi
-    else
-        print_warning "Skipping armv8 build (not native and no cross-compilation available)"
-    fi
-
-    print_success "All available Linux platforms built successfully"
+    print_success "Build complete for ${target_arch}"
 }
+
+# =============================================================================
+# Packaging Functions
+# =============================================================================
 
 create_linux_archive() {
     local version="$1"
-    local archive_name="libjpeg-turbo-${version}-linux"
+    local arch="$2"
+    local archive_name="libjpeg-turbo-${version}-linux-${arch}"
     local archive_path="${OUTPUT_DIR}/${archive_name}"
 
     print_step "Creating Linux archive"
 
     # Create archive directory structure
-    mkdir -p "${archive_path}"
+    mkdir -p "${archive_path}"/{lib,include,bin}
 
-    # Copy files for each built architecture
-    for arch_dir in "${INSTALL_DIR}"/linux-*; do
-        if [ -d "$arch_dir" ]; then
-            local arch=$(basename "$arch_dir" | sed 's/linux-//')
-            mkdir -p "${archive_path}/${arch}"/{lib,include,bin}
+    local arch_dir="${INSTALL_DIR}/linux-${arch}"
 
-            # Copy shared libraries
-            if [ -d "${arch_dir}/lib" ]; then
-                find "${arch_dir}/lib" -name "*.so*" -exec cp -P {} "${archive_path}/${arch}/lib/" \; 2>/dev/null || true
-                find "${arch_dir}/lib" -name "*.a" -exec cp {} "${archive_path}/${arch}/lib/" \; 2>/dev/null || true
-            fi
+    # Copy shared libraries
+    if [ -d "${arch_dir}/lib" ]; then
+        find "${arch_dir}/lib" -name "*.so*" -exec cp -P {} "${archive_path}/lib/" \; 2>/dev/null || true
+        find "${arch_dir}/lib" -name "*.a" -exec cp {} "${archive_path}/lib/" \; 2>/dev/null || true
+    fi
 
-            # Copy headers
-            if [ -d "${arch_dir}/include" ]; then
-                cp -r "${arch_dir}/include"/* "${archive_path}/${arch}/include/" 2>/dev/null || true
-            fi
+    # Copy headers
+    if [ -d "${arch_dir}/include" ]; then
+        cp -r "${arch_dir}/include"/* "${archive_path}/include/" 2>/dev/null || true
+    fi
 
-            # Copy binaries
-            if [ -d "${arch_dir}/bin" ]; then
-                cp -r "${arch_dir}/bin"/* "${archive_path}/${arch}/bin/" 2>/dev/null || true
-            fi
-        fi
-    done
+    # Copy binaries
+    if [ -d "${arch_dir}/bin" ]; then
+        cp -r "${arch_dir}/bin"/* "${archive_path}/bin/" 2>/dev/null || true
+    fi
 
     # Create README for the archive
     cat > "${archive_path}/README.txt" << EOF
-libjpeg-turbo ${version} - Linux Binaries
-==========================================
+libjpeg-turbo ${version} - Linux ${arch} Binaries
+=================================================
 
-This archive contains pre-built libjpeg-turbo libraries for Linux.
+This archive contains pre-built libjpeg-turbo libraries for Linux ${arch}.
 
 Directory Structure:
 -------------------
-Each architecture directory (x86, x64, armv7, armv8) contains:
   lib/      - Shared (.so) and static (.a) libraries
   include/  - Header files
   bin/      - Utility executables
 
 Build Configuration:
 -------------------
-JPEG8 Compatibility:      ${WITH_JPEG8:-0}
-JPEG7 Compatibility:      ${WITH_JPEG7:-0}
-SIMD Optimizations:       ${WITH_SIMD:-1}
-Arithmetic Encoding:      ${WITH_ARITH_ENC:-1}
-Arithmetic Decoding:      ${WITH_ARITH_DEC:-1}
-TurboJPEG API:           ${WITH_TURBOJPEG:-1}
+JPEG8 Compatibility:      ${WITH_JPEG8}
+JPEG7 Compatibility:      ${WITH_JPEG7}
+SIMD Optimizations:       ${WITH_SIMD}
+Arithmetic Encoding:      ${WITH_ARITH_ENC}
+Arithmetic Decoding:      ${WITH_ARITH_DEC}
+TurboJPEG API:           ${WITH_TURBOJPEG}
 
 Usage:
 ------
-1. Copy the appropriate architecture's .so files to your library path
-   or application directory
+1. Copy the .so files to your library path or application directory
 2. Link against the libraries when building your application:
    - For libjpeg: -ljpeg
    - For libturbojpeg: -lturbojpeg
@@ -299,5 +309,171 @@ EOF
         print_warning "tar command not found, archive directory created but not compressed"
     fi
 
-    cd "$SCRIPT_DIR"
+    cd "$PROJECT_ROOT"
 }
+
+generate_checksums() {
+    local version="$1"
+    local arch="$2"
+    local archive_name="libjpeg-turbo-${version}-linux-${arch}.tar.gz"
+
+    echo "Generating SHA256 checksums..."
+    cd "$OUTPUT_DIR"
+
+    sha256sum "$archive_name" > checksums.txt
+
+    echo ""
+    echo "Checksums:"
+    cat checksums.txt
+    echo ""
+
+    print_success "Generated checksums.txt"
+    cd "$PROJECT_ROOT"
+}
+
+# =============================================================================
+# Main Execution
+# =============================================================================
+
+# Function to display usage
+show_usage() {
+    cat << EOF
+Usage: $0 [OPTIONS] [VERSION]
+
+Build libjpeg-turbo for Linux.
+
+Arguments:
+  VERSION              Version to build (required)
+                       Examples: latest, 3.0.1, 2.1.5
+                       Use 'latest' to build the most recent release
+
+Options:
+  --arch ARCH          Architecture to build (default: auto-detect)
+                       Options: x86, x64, armv7, armv8
+  --jpeg8              Build with libjpeg v8 API/ABI compatibility
+                       (mutually exclusive with --jpeg7)
+  --jpeg7              Build with libjpeg v7 API/ABI compatibility
+                       (mutually exclusive with --jpeg8)
+  --no-simd            Disable SIMD extensions
+  --no-arith-enc       Disable arithmetic encoding support
+  --no-arith-dec       Disable arithmetic decoding support
+  --no-turbojpeg       Disable TurboJPEG API library
+  -h, --help           Display this help message
+
+Examples:
+  $0 latest                       # Build latest version for native arch
+  $0 --arch x64 3.0.1             # Build version 3.0.1 for x64
+  $0 --jpeg8 --arch armv8 3.0.1   # Build v3.0.1 with JPEG8 for ARM64
+  $0 --no-simd latest             # Build latest without SIMD
+
+Build Options:
+  JPEG8:        Emulate libjpeg v8 API/ABI (incompatible with v6b)
+  JPEG7:        Emulate libjpeg v7 API/ABI (incompatible with v6b)
+  SIMD:         Use SIMD optimizations (SSE2, NEON, etc.)
+  ARITH_ENC:    Arithmetic encoding support
+  ARITH_DEC:    Arithmetic decoding support
+  TURBOJPEG:    Include TurboJPEG API library
+
+EOF
+    exit 0
+}
+
+# Show usage if no arguments provided
+if [[ $# -eq 0 ]]; then
+    show_usage
+fi
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -h|--help)
+            show_usage
+            ;;
+        --arch)
+            if [[ -z "$2" || "$2" == -* ]]; then
+                echo "Error: --arch requires an architecture argument"
+                exit 1
+            fi
+            ARCH="$2"
+            shift 2
+            ;;
+        --jpeg8)
+            WITH_JPEG8=1
+            WITH_JPEG7=0
+            shift
+            ;;
+        --jpeg7)
+            WITH_JPEG7=1
+            WITH_JPEG8=0
+            shift
+            ;;
+        --no-simd)
+            WITH_SIMD=0
+            shift
+            ;;
+        --no-arith-enc)
+            WITH_ARITH_ENC=0
+            shift
+            ;;
+        --no-arith-dec)
+            WITH_ARITH_DEC=0
+            shift
+            ;;
+        --no-turbojpeg)
+            WITH_TURBOJPEG=0
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+        *)
+            VERSION="$1"
+            shift
+            ;;
+    esac
+done
+
+# Determine architecture
+if [ "$ARCH" = "auto" ]; then
+    ARCH=$(detect_native_arch)
+    echo "Auto-detected architecture: $ARCH"
+fi
+
+print_header "Building libjpeg-turbo for Linux"
+echo "Version: $VERSION"
+echo "Architecture: $ARCH"
+echo ""
+echo "Build Configuration:"
+echo "  WITH_JPEG8:              $WITH_JPEG8"
+echo "  WITH_JPEG7:              $WITH_JPEG7"
+echo "  WITH_SIMD:               $WITH_SIMD"
+echo "  WITH_ARITH_ENC:          $WITH_ARITH_ENC"
+echo "  WITH_ARITH_DEC:          $WITH_ARITH_DEC"
+echo "  WITH_TURBOJPEG:          $WITH_TURBOJPEG"
+echo ""
+
+# Step 1: Determine and fetch version
+print_step "Determining version and downloading source"
+fetch_libjpeg_turbo_source "$VERSION"
+
+# Step 2: Build for specified architecture
+print_step "Building for $ARCH"
+build_for_architecture "$ARCH"
+
+# Step 3: Create archive
+print_step "Creating archive"
+create_linux_archive "$VERSION_CLEAN" "$ARCH"
+
+# Step 4: Generate checksums
+print_step "Generating checksums"
+generate_checksums "$VERSION_CLEAN" "$ARCH"
+
+print_header "Build Complete!"
+echo "Output files in build/output/:"
+echo "  - libjpeg-turbo-${VERSION_CLEAN}-linux-${ARCH}.tar.gz"
+echo "  - checksums.txt"
+echo ""
+echo "Full path: ${OUTPUT_DIR}"
+echo ""

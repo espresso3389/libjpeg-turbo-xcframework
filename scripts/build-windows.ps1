@@ -193,7 +193,14 @@ function Get-LatestVersion {
     Write-Host "Fetching latest libjpeg-turbo version from GitHub..."
     try {
         $ApiUrl = "https://api.github.com/repos/libjpeg-turbo/libjpeg-turbo/releases/latest"
-        $Response = Invoke-RestMethod -Uri $ApiUrl -ErrorAction Stop
+
+        # Add authentication header if GITHUB_TOKEN is set
+        $Headers = @{}
+        if ($env:GITHUB_TOKEN) {
+            $Headers["Authorization"] = "Bearer $env:GITHUB_TOKEN"
+        }
+
+        $Response = Invoke-RestMethod -Uri $ApiUrl -Headers $Headers -ErrorAction Stop
         $LatestVersion = $Response.tag_name
         Write-Host "Latest version: $LatestVersion"
         return $LatestVersion
