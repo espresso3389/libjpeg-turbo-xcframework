@@ -151,11 +151,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        choco install cmake -y
         choco install nasm -y
-
-    - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
 
     - name: Build Windows binaries
       shell: cmd
